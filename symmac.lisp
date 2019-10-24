@@ -28,7 +28,7 @@
 (defvar *symbol-macro-replacements* nil
   "Holds symbol-macro-let replacements during macroexpansion.")
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 (defmacro symbol-replaced-p (symbol)
   `(assoc ,symbol *symbol-macro-replacements*))
 
@@ -42,7 +42,7 @@
   (push (cons symbol expansion) *symbol-macro-replacements*))
 
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro bind-non-macros (list &body forms);removed from following eval-when
                                             ;moe 12/4
@@ -106,7 +106,7 @@
 		*in-the-compiler*
 		(compiler-macro-function (car form)
 					 *symbol-macro-environment*))
-	   (setq form (compiler-macroexpand-1 form *symbol-macro-environment*))
+	   (setq form (swank::compiler-macroexpand-1 form *symbol-macro-environment*))
 	   (go loop))
 	  ((macro-function (car form) *symbol-macro-environment*)
 	   (setq form (macroexpand-1 form *symbol-macro-environment*))
@@ -195,7 +195,7 @@
 ;;; Can take a raw function, which gets applied to the form to be transformed.
 ;;; If it changes the environment, it should bind *symbol-macro-replacements*.
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro defsymtrans (special-form args-or-function &body body)
   (let* ((dummy-name (make-symbol (symbol-name special-form)))
@@ -382,7 +382,7 @@
 			     (if (consp x) (car x) x))
 			 bindings))
 	  (vals (mapcar #'(lambda (x)
-			    (if (consp x) (eval (second x)) nil))
+			    (if (consp x) (:execute (second x)) nil))
 			bindings)))
       (progv names vals
 	`(compiler-let ,bindings ,@(symmac-replace-list body))))))

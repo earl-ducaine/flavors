@@ -5,6 +5,8 @@
   :components
   ((:file "package")
    (:file "flavors-macros")
+   (:file "lap-lab")
+   (:file "pre-kkernel")
    (:file "kkernel")
    (:file "kernel")
    (:file "flavor-main-decls")

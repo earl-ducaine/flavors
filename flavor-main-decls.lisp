@@ -7,13 +7,12 @@
 
 (in-package "FLAVORS")
 
-(proclaim '(function flavor-all-components (t) t))
-(proclaim '(function order-flavors (t t) t))
-(proclaim '(function cleanup-flavor (t) t))
+;; (proclaim '(function flavor-all-components (t) t))
+;; (proclaim '(function order-flavors (t t) t))
+;; (proclaim '(function cleanup-flavor (t) t))
 
-;;;
-;;; Random utilities.
-;;;
+
+;; Random utilities.
 
 (defmacro mydlet (bindings &body body)
     (let ((runtime nil))
@@ -29,59 +28,62 @@
 
 (defun private-structure-printer (object stream depth)
   (declare (ignore depth))
-  depth
-  (format stream "#<~A ~X>" (type-of object) (lucid::%pointer object)))
+  ;; depth
+  (format stream "#<~A ~X>"
+	  (type-of object)
+	  (lucid::%pointer object)))
 
 
 ;;; Boolean variables shouldn't take up 32 bits.
 ;;; Syntax and semantics like defstruct.
 
-(eval-when (eval compile)
+(eval-when (:compile-toplevel :execute)
+  (defun my-logbitp (index integer)
+    "Predicate returns T if bit index of integer is a 1."
+    (logbitp index integer))
+  
+  (define-setf-expander my-logbitp (index place &environment env)
+    (multiple-value-bind (temps vals stores store-form access-form)
+	(get-setf-expansion place env)
+      (let ((itemp (gensym))			; temp var for index
+	    (store (gensym))			; temp var for result
+	    (stemp (first stores)))		; temp var for place
+	(values
+	 ;; The list of temporary variables
+	 (cons itemp temps)
+	 ;; The list of value forms
+	 (cons index vals)
+	 ;; The list of store variables
+	 (list store)
+	 ;; The store form
+	 `(let ((,stemp (if ,store
+			    (logior (ash 1 ,itemp) ,access-form)
+			    (logandc1 (ash 1 ,itemp) ,access-form))))
+	    ,store-form
+	    ,store)
+	 ;; The access form
+	 `(logbitp ,itemp ,access-form)))))
 
-(define-setf-method logbitp (index place &environment env)
-  (multiple-value-bind (temps vals stores store-form access-form)
-      (get-setf-method place env)
-    (let ((itemp (gensym))			; temp var for index
-	  (store (gensym))			; temp var for result
-	  (stemp (first stores)))		; temp var for place
-      (values
-	;; The list of temporary variables
-	(cons itemp temps)
-	;; The list of value forms
-	(cons index vals)
-	;; The list of store variables
-	(list store)
-	;; The store form
-	`(let ((,stemp (if ,store
-			   (logior (ash 1 ,itemp) ,access-form)
-			   (logandc1 (ash 1 ,itemp) ,access-form))))
-	   ,store-form
-	   ,store)
-	;; The access form
-	`(logbitp ,itemp ,access-form)))))
-
-(defmacro defbits (str-name &rest names)
-  (do ((i 0 (1+ i))
-       (names names (cdr names))
-       (res nil))
-      ((null names) `(progn ,@res))
-    (push `(defmacro ,(intern (concatenate 'string (symbol-name str-name)
-					   "-" (symbol-name (car names))))
-		     (thing)
-	     `(logbitp ,,i (the fixnum ,thing)))
-	  res)))
-
-)
+  (defmacro defbits (str-name &rest names)
+    (do ((i 0 (1+ i))
+	 (names names (cdr names))
+	 (res nil))
+	((null names) `(progn ,@res))
+      (push `(defmacro ,(intern (concatenate 'string (symbol-name str-name)
+					     "-" (symbol-name (car names))))
+		 (thing)
+	       `(logbitp ,,i (the fixnum ,thing)))
+	    res))))
 
 ;;; Assoc with a nicer setf method.
 
-(defsubst my-assoc (key list)
+(defun my-assoc (key list)
   "Just like simple assoc, but has a nice setf method."
   (cdr (assoc key list)))
 
-(define-setf-method my-assoc (key list)
+(define-setf-expander my-assoc (key list)
   (multiple-value-bind (temps vals stores store-form access-form)
-      (get-setf-method list)
+      (get-setf-expansion list)
     (let ((ktemp (gensym))
 	  (list (gensym))
 	  (assoc (gensym))
@@ -99,7 +101,7 @@
 
 (define-modify-macro nreversef () nreverse)
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro deletef (item sequence &rest keywords)
     `(setf ,sequence (delete ,item ,sequence ,@keywords)))
@@ -161,7 +163,7 @@
       (make-array 10 :adjustable t :fill-pointer 0)	;over popped. moe 1/16/86
       (vector-pop *changed-method-stacks*)))
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro dealloc-tiny-stack (place)
   `(let ((%x (shiftf ,place nil)))
@@ -188,7 +190,7 @@
 ;;; More specific to Flavors.
 ;;; 
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro flavor-function-name (symbol &rest things)
   "Usually called with flavor-name, method, and method-type.
@@ -221,7 +223,7 @@
              (setf (get iv 'get-name) res)
              res))))
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro combination-ordering (name)
   `(let ((%combo ,name))
@@ -245,7 +247,7 @@
 ;;; Special values for the default: REQUIRED and UNSUPPLIED.
 
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defstruct (method-env (:print-function private-structure-printer)
                        (:include iv-env))
@@ -270,4 +272,4 @@
 
 )
 
-(lucid::defstruct-runtime-slot-function instance-env vector instance-env)
+;; (lucid::defstruct-runtime-slot-function instance-env vector instance-env)

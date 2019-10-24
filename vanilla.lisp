@@ -8,7 +8,7 @@
 
 (in-package "FLAVORS")
 
-(eval-when (eval compile)
+(eval-when (eval :compile-toplevel)
 
 (defmacro case-construct-methods (function-names function-methods)
   ;;; function-names=primary=(flavor-name-key-primary1

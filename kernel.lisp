@@ -10,7 +10,7 @@
 
 ;;; Definitions for the Method Cache.
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defconstant log-2-method-cache-size 10)
 (defconstant method-cache-size (ash 1 log-2-method-cache-size))
@@ -28,7 +28,7 @@
      method-cache-entry-mask))
 
 (defmacro cached-method (key1 key2)
-  (lucid::once-only (key1 key2)
+  (alexandria:once-only (key1 key2)
     `(let ((index (cache-method-index ,key1 ,key2)))
        (and (boundp '*method-cache-table*)
 	    (eq (svref *method-cache-table* (lucid::+& index 0)) ,key1)
@@ -36,7 +36,7 @@
 	    (svref *method-cache-table* (lucid::+& index 2))))))
   
 (defmacro cache-method (key1 key2 value)
-  (lucid::once-only (key1 key2)
+  (alexandria:once-only (key1 key2)
     `(let ((index (cache-method-index ,key1 ,key2)))
        (unless (boundp '*method-cache-table*)
 	 (setq *method-cache-table*
@@ -63,7 +63,7 @@
 ;;; Takes a list of forms and returns values of a list of doc-strings
 ;;; and declares, and a list of the remaining forms.
 
-(eval-when (eval compile load)
+(eval-when (:execute compile load)
 (defun extract-doc-and-declares (forms)
     (do ((forms forms (cdr forms))
          (docs nil (cons (car forms) docs)))
@@ -74,7 +74,7 @@
          (values (nreverse docs) forms))))
 )
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro self-and-descriptor (instance) ;moe 2/19/86
   `(values ,instance (%instance-ref ,instance 0)))
@@ -85,7 +85,7 @@
 ;;; Environments.
 ;;;
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defstruct (iv-env (:print-function private-structure-printer)
                    (:constructor make-iv-env (vector)))
@@ -104,39 +104,34 @@
                        (push `(,(svref vec i) (iv ,(svref vec i))) res))
                      res))))))
 
-;;;
-;;; Defstructs
-;;;
+;; Defstructs
+(eval-when (:compile-toplevel :execute)
+  (defstruct (instance-descriptor
+	       (:type vector)
+               (:constructor internal-make-id
+			     (type env default-entry)))
+    (send-fn 'flavor-send)
+    type
+    (table (make-hash-table :size 30 :test #'eq))
+    default-entry
+    (instantiated-p nil)
+    (env nil :read-only t))
 
-(eval-when (eval compile)
+  (defstruct (entry (:type vector))
+    function
+    map
+    cmap))
 
-(defstruct (instance-descriptor (:type vector)
-                                (:constructor internal-make-id
-                                              (type env default-entry)))
-  (send-fn 'flavor-send)
-  type
-  (table (make-hash-table :size 30 :test #'eq))
-  default-entry
-  (instantiated-p nil)
-  (env nil :read-only t))
-
-(defstruct (entry (:type vector))
-  function
-  map
-  cmap)
-
-)
-
-(lucid::defstruct-runtime-slot-function entry cmap entry)
-(lucid::defstruct-runtime-slot-function entry function entry)
-(lucid::defstruct-runtime-slot-function entry map entry)
-(lucid::defstruct-runtime-slot-function instance-descriptor env instance-descriptor)
-
+;; (lucid::defstruct-runtime-slot-function entry cmap entry)
+;; (lucid::defstruct-runtime-slot-function entry function entry)
+;; (lucid::defstruct-runtime-slot-function entry map entry)
+;; (lucid::defstruct-runtime-slot-function instance-descriptor env
+;;   instance-descriptor)
 
 (defun make-instance-descriptor (type env default-handler)
   (internal-make-id type env (make-entry :function default-handler)))
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defstruct (method (:print-function private-structure-printer)
                    (:predicate methodp)
@@ -170,7 +165,7 @@
 
 ;;; Special version of apply-entry to avoid consing.
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro xapply-entry (self message entry arg1 arg1p arg2 arg2p
 			     arg3 arg3p arg4 arg4p remaining-args)
@@ -184,17 +179,15 @@
 
 )
 
-(eval-when (eval compile load)
+(eval-when (:execute compile load)
 
 (defmacro get-message ()
     "Used in the body of a default handler, returns the message
     that invoked this handler."
-    '%message)
-)
+    '%message))
 
 (defsetf get-message () (new)
-;  (declare (ignore new))
-  new
+  (declare (ignore new))
   (error "Cannot setf get-message." new))
 
 (defmacro defun-default-handler (name args &body body)
@@ -206,7 +199,7 @@
        (declare (ignore self %message %entry))
        ,@forms)))
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro set-symbol-function-default-handler (name args &body body)
   "Like defun-default-handler but evaluates name"
@@ -305,7 +298,7 @@
 ;;; Other instance-descriptor stuff.
 ;;;
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro do-handlers (((name function) instance-descriptor) &body body)
   "(((message method-fn-name) instance-descriptor) . body)
@@ -411,7 +404,7 @@
             (t (do-map-method id %entry)
                (apply-entry self (get-message) %entry args))))))
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro map-ivs (ivs instance-ivs)
   `(let ((ivs ,ivs)
@@ -518,7 +511,7 @@
       `(%instance-ref self (svref (entry-map %entry)
                                   (position ',name %calling-ivs)))))
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro iv-bound-p (name)
   (if *calling-method*

@@ -8,15 +8,14 @@
 ;;; The kernel-kernel allows object-oriented systems to share hooks.
 ;;;
 
-(in-package "FLAVORS")
-
+(in-package :flavors)
 
 (defun send (instance message &rest args)
   (apply 'flavor-send instance message args))
 
 (lucid::declare-machine-class lucid::common)
 
-(lucid::def-compiler-macro send (instance message &rest args)
+(define-compiler-macro send (instance message &rest args)
   `(flavor-send ,instance ,message ,@args))
 
 (lucid::undeclare-machine-class)
@@ -27,7 +26,7 @@
 
 (defparameter lucid::*flavors-send* #'send)
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro alloc-instance (size id &optional (initial-element ''unbound))
   "Allocates a new instance."
@@ -35,15 +34,15 @@
      (setf (lucid::structure-ref array 0 '%instance) ,id)
      (dotimes (i ,size)
        (setf (lucid::structure-ref array (1+ i) '%instance) ,initial-element))
-      array))
+      array)))
 
-)
 
 (defmacro %instance-ref (instance slot)
-  `(lucid::structure-ref ,instance ,slot '%instance))	;moe 1/11/86
+  `(slot-value ,instance ,slot '%instance))	
 
 (defmacro instance-descriptor (instance)
-  `(%instance-ref ,instance 0))			;moe 1/11/86
+  ;; moe 1/11/86
+  `(%instance-ref ,instance 0))			
   
 (defmacro slot-unbound-p (instance slot)
 ;  "Follows 'forwarding pointers'."       translate->add one to slot

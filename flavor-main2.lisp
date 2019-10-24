@@ -441,7 +441,7 @@
 	   (compile-flavor flavor)))))
 
 
-(eval-when (eval compile)
+(eval-when (eval :compile-toplevel)
 
 (defmacro compile-flavors-aux (flavors)
   (if *flavors-in-compiler*
@@ -507,7 +507,7 @@
 
 ;;; These macros refer to the specials of the previous section.
 
-(eval-when (eval compile)
+(eval-when (eval :compile-toplevel)
 
 (defmacro get-slot (message slot)
   `(my-assoc ,message (my-assoc ,slot *methods*)))
@@ -539,7 +539,7 @@
     form))
 
 
-(eval-when (eval compile)
+(eval-when (eval :compile-toplevel)
 
 (defmacro defcombination-ordering (name (arg) &body body)
   "Should use ORDER-METHODS or ORDER-WRAPPERS (almost exclusively) to
@@ -642,7 +642,7 @@
   "Returns the function that handles the given message."
   (get-handler message object)) 
 
-(eval-when (eval compile)
+(eval-when (eval :compile-toplevel)
 
 (defmacro lexpr-funcall-self (message &rest arguments)
   "Supplied for compatibility with Symbolics Flavors."
@@ -882,7 +882,7 @@
     (unless (flavor-defined-p flavor)
       (error "Flavor ~S not defined." flavor-name))
     (multiple-value-bind (docs forms) (extract-doc-and-declares forms)
-      `(eval-when (eval load compile)
+      `(eval-when (eval load :compile-toplevel)
          (internal-define-method ,function-name ,(flavor-instance-env flavor)
                                  ,args (,@docs (block ,method ,@forms)))
          (%defmethod ',flavor-name (or ',method-list ',method)

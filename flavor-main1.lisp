@@ -99,7 +99,7 @@
           (push name (method-structure-methods structure))
           (push nil (method-structure-types structure))))))
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro get-method-types (name structure &optional create)
   `(%get-method-types ,name ,structure ,create))
@@ -368,14 +368,12 @@
 (defmacro defflavor (flavor-name ivs components &rest options)
   "(flavor-name iv-list component-list . options)
   Refer to the flavor documentation for details."
-  (when (and (
-	      #+LCL3.0 type-specifier-p
-	      #-LCL3.0 lucid::type-specifier-p 
-	       flavor-name) (not (flavorp flavor-name)))
+  (when (and (find-class flavor-name)
+	     (not (flavorp flavor-name)))
     (error "Flavor name ~S is not allowed." flavor-name))
   (%defflavor flavor-name ivs components options)
   `(progn
-     (eval-when (eval compile load)
+     (eval-when (:execute compile load)
             (%defflavor ',flavor-name ',ivs ',components ',options))
           ,.(%flavor-forms flavor-name)
           ',flavor-name))

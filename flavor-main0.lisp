@@ -5,11 +5,10 @@
 ;;;
 ;;; ***************************************************************************
 
-(in-package "FLAVORS")
-
+(in-package :flavors)
 
 (defun make-env (var-list ordered required 
-                          settable gettable initable)
+                 settable gettable initable)
   (with-stacks (var-stack default-stack)
     (dolist (o ordered)
       (vector-push-extend o var-stack)
@@ -42,7 +41,7 @@
                          :ables ables)))))
 
 
-;;;
+;;;
 ;;; Flavor definition.
 ;;;
 
@@ -84,10 +83,11 @@
     :settable-instance-variables :initable-instance-variables
     :ordered-instance-variables))
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
-(defbits changed
-  components            ; Recompute all-components, compute everything if change.
+  (defbits changed
+      ;; Recompute all-components, compute everything if change.
+  components            
   required-flavors      ; Check if we're instantiable.
   required-ivs          ; Ditto.
   iv-order              ; Maybe important to the kernel.
@@ -145,7 +145,6 @@
 
 (defun print-flavor (object stream depth)
   (declare (ignore depth))
-  depth
   (format stream "#<Flavor ~S>" (flavor-name object)))
 
 (defmacro flavor-defined-p (flavor)
@@ -157,7 +156,7 @@
 (defmacro flavor-abstract-p (flavor)
    `(flags-abstract-p (flavor-flags ,flavor)))
 
-(defsubst flavor-compiled-p (flavor)
+(defun flavor-compiled-p (flavor)
   (and (flavor-defined-p flavor)
        (flags-compiled-p (flavor-flags flavor))))
 
@@ -193,7 +192,7 @@
 	     ,@(when (or (not const-createp) (not ev-createp))
 		 `((t (error "Flavor ~S does not exist." name))))))))
 
-(eval-when (eval compile)
+(eval-when (:execute :compile-toplevel)
 
 (defmacro flavor-dirty-p (flavor)
     `(or (plusp (flavor-changed ,flavor))
@@ -272,29 +271,28 @@
 (defparameter lucid::*flavors-flavor-symbol* 'flavor)
 (defparameter lucid::*flavors-subtypep* #'flavor-subtypep)
 
-
-;;; There is an assumption that INSTANCEP exists always returns nil 
-;;; if the flavors sub-system is not loaded.  This assumption is true 
-;;; for release 2.0.4 and release 2.1.0
-
 ;;;; TYPE-OF
 
-(defadvice (type-of instance-type-of ) (object)
-  (if (and (lucid::reasonablep object) (instancep object))
-      (flavor-type-of object)
-      (advice-continue  object)))
+;; (defadvice (type-of instance-type-of) (object)
+;;       (flavor-type-of object)
+
+
+;; (defadvice (type-of instance-type-of ) (object)
+;;   (if (and (lucid::reasonablep object) (instancep object))
+;;       (flavor-type-of object)
+;;       (advice-continue  object)))
 
 ;;;; TYPEP
 ;;; The extra cond clause is for the case of foo having been
 ;;; defined as both a flavor and a structure.  So first check to
 ;;; see if it is the flavor - if not, check to see if it is the structure
 
-(defadvice (typep flavor-type-p) (object type)
-   (if (flavorp type)
-       (cond
-	 ((instancep object)
-	  (flavor-typep object type))
-	 ((structurep object)
-	  (advice-continue object type)))
-       (advice-continue object type)))
+;; (defadvice (typep flavor-type-p) (object type)
+;;    (if (flavorp type)
+;;        (cond
+;; 	 ((instancep object)
+;; 	  (flavor-typep object type))
+;; 	 ((structurep object)
+;; 	  (advice-continue object type)))
+;;        (advice-continue object type)))
 
