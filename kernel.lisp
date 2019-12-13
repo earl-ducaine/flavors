@@ -50,19 +50,12 @@
 
 (defmacro flush-method-cache ()
   `(when (boundp '*method-cache-table*)
-     (lucid::simple-vector-fill *method-cache-table* 0 0 nil)))
+     (lucid::simple-vector-fill *method-cache-table* 0 0 nil))))
 
-)
-
-
-;;;
 ;;; Random stuff and Environments.
-;;;
-
 
 ;;; Takes a list of forms and returns values of a list of doc-strings
 ;;; and declares, and a list of the remaining forms.
-
 (eval-when (:execute compile load)
 (defun extract-doc-and-declares (forms)
     (do ((forms forms (cdr forms))
@@ -76,23 +69,16 @@
 
 (eval-when (:execute :compile-toplevel)
 
-(defmacro self-and-descriptor (instance) ;moe 2/19/86
-  `(values ,instance (%instance-ref ,instance 0)))
+  (defmacro self-and-descriptor (instance)
+    ;; moe 2/19/86
+  `(values ,instance (%instance-ref ,instance 0))))
 
-)
-
-;;;
 ;;; Environments.
-;;;
-
-(eval-when (:execute :compile-toplevel)
 
 (defstruct (iv-env (:print-function private-structure-printer)
                    (:constructor make-iv-env (vector)))
   (vector nil :read-only t)
   (bindings* t))
-
-)
 
 (defun iv-env-bindings (env)
   (let ((bin (iv-env-bindings* env)))

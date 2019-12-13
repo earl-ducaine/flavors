@@ -368,7 +368,7 @@
 (defmacro defflavor (flavor-name ivs components &rest options)
   "(flavor-name iv-list component-list . options)
   Refer to the flavor documentation for details."
-  (when (and (find-class flavor-name)
+  (when (and (find-class flavor-name nil)
 	     (not (flavorp flavor-name)))
     (error "Flavor name ~S is not allowed." flavor-name))
   (%defflavor flavor-name ivs components options)

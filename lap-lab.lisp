@@ -37,23 +37,21 @@
   `(eval-when (:compile-toplevel :load-toplevel :exec)
      (lucid::def-compiler-macro ,name ,arglist ,@body)))
 
-(eval-when (:load-toplevel :execute)
-  (defmacro defstruct-simple-predicate (structure-name &optional
-							 predicate-name)
-    ;; Defines a simple structure predicate which does not check for
-    ;; inclusions
-    (unless predicate-name
-      (setq predicate-name (append-symbols structure-name '-p)))
-    `(progn
-       (defun ,predicate-name (x)
+(defmacro defstruct-simple-predicate (structure-name &optional predicate-name)
+  ;; Defines a simple structure predicate which does not check for
+  ;; inclusions
+  (unless predicate-name
+    (setq predicate-name (append-symbols structure-name '-p)))
+  `(progn
+     (defun ,predicate-name (x)
+       (and (structurep x)
+	    (find-class ',structure-name nil)
+	    (typep x ',structure-name))) 
+     (define-compiler-macro ,predicate-name (x)
+       (alexandria:once-only (x)
 	 (and (structurep x)
-	      #+lucid (eq (structure-type x) ',structure-name)))
-       (define-compiler-macro ,predicate-name (x)
-	 (alexandria:once-only (x)
-	   `(and (structurep ,x)
-		 (eq (structure-type ,x) ',',structure-name)))))))
-
-
+	      (find-class ',structure-name nil)
+	      (typep x ',structure-name))))))
 
 ;; Used primarily by array-optimize.lisp (and by the now-obsolete file
 ;; apollo-runtime.lisp)

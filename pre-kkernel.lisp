@@ -118,6 +118,7 @@
 	  ,@declares		
 	    ;; Let code know how to continue it
 	    ,@body-forms)))))
+
 ;; (defadvice (type-of instance-type-of) (object) (flavor-type-of object))
 
 

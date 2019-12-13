@@ -28,52 +28,48 @@
 
 (defun private-structure-printer (object stream depth)
   (declare (ignore depth))
-  ;; depth
-  (format stream "#<~A ~X>"
-	  (type-of object)
-	  (lucid::%pointer object)))
-
+  (format stream "#<~A2>"
+	  (type-of object)))
 
 ;;; Boolean variables shouldn't take up 32 bits.
 ;;; Syntax and semantics like defstruct.
 
-(eval-when (:compile-toplevel :execute)
-  (defun my-logbitp (index integer)
-    "Predicate returns T if bit index of integer is a 1."
-    (logbitp index integer))
-  
-  (define-setf-expander my-logbitp (index place &environment env)
-    (multiple-value-bind (temps vals stores store-form access-form)
-	(get-setf-expansion place env)
-      (let ((itemp (gensym))			; temp var for index
-	    (store (gensym))			; temp var for result
-	    (stemp (first stores)))		; temp var for place
-	(values
-	 ;; The list of temporary variables
-	 (cons itemp temps)
-	 ;; The list of value forms
-	 (cons index vals)
-	 ;; The list of store variables
-	 (list store)
-	 ;; The store form
-	 `(let ((,stemp (if ,store
-			    (logior (ash 1 ,itemp) ,access-form)
-			    (logandc1 (ash 1 ,itemp) ,access-form))))
-	    ,store-form
-	    ,store)
-	 ;; The access form
-	 `(logbitp ,itemp ,access-form)))))
+(defun my-logbitp (index integer)
+  "Predicate returns T if bit index of integer is a 1."
+  (logbitp index integer))
 
-  (defmacro defbits (str-name &rest names)
-    (do ((i 0 (1+ i))
-	 (names names (cdr names))
-	 (res nil))
-	((null names) `(progn ,@res))
-      (push `(defmacro ,(intern (concatenate 'string (symbol-name str-name)
-					     "-" (symbol-name (car names))))
-		 (thing)
-	       `(logbitp ,,i (the fixnum ,thing)))
-	    res))))
+(define-setf-expander my-logbitp (index place &environment env)
+  (multiple-value-bind (temps vals stores store-form access-form)
+      (get-setf-expansion place env)
+    (let ((itemp (gensym))			; temp var for index
+	  (store (gensym))			; temp var for result
+	  (stemp (first stores)))		; temp var for place
+      (values
+       ;; The list of temporary variables
+       (cons itemp temps)
+       ;; The list of value forms
+       (cons index vals)
+       ;; The list of store variables
+       (list store)
+       ;; The store form
+       `(let ((,stemp (if ,store
+			  (logior (ash 1 ,itemp) ,access-form)
+			  (logandc1 (ash 1 ,itemp) ,access-form))))
+	  ,store-form
+	  ,store)
+       ;; The access form
+       `(logbitp ,itemp ,access-form)))))
+
+(defmacro defbits (str-name &body names)
+  (do ((i 0 (1+ i))
+       (names names (cdr names))
+       (res nil))
+      ((null names) `(progn ,@res))
+    (push `(defmacro ,(intern (concatenate 'string (symbol-name str-name)
+					   "-" (symbol-name (car names))))
+	       (thing)
+	     `(logbitp ,,i (the fixnum ,thing)))
+	  res)))
 
 ;;; Assoc with a nicer setf method.
 
@@ -240,24 +236,23 @@
 		(get ,name 'mixer) ,mixer)))
 
 )
-;;;
+
 ;;; Environments.  
-;;;
 
 ;;; Special values for the default: REQUIRED and UNSUPPLIED.
 
-
-(eval-when (:execute :compile-toplevel)
-
 (defstruct (method-env (:print-function private-structure-printer)
                        (:include iv-env))
-  numordered ; number of vars ordered.
-  defaults   ; default forms.
+  ;; number of vars ordered.
+  numordered
+  ;; default forms.
+  defaults   
   (ables '#() :type simple-vector))
 
 (defstruct (instance-env (:print-function private-structure-printer)
                          (:include method-env))
-  required) ; list of required ivs.
+  ;; list of required ivs.
+  required) 
 
 (defbits ables
   gettable
@@ -269,7 +264,5 @@
   `(aref ables
 	 (or (position ,x var-stack)
 	     (error "No such instance variable - ~S." ,x))))
-
-)
 
 ;; (lucid::defstruct-runtime-slot-function instance-env vector instance-env)

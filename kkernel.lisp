@@ -1,26 +1,19 @@
 ;;; -*- Mode: LISP; Syntax: Common-lisp; Base: 10; Package: (FLAVOR-INTERNALS LISP) -*-
-;;; ***************************************************************************
 ;;;
-;;;        Copyright (C) 1985 by Lucid Inc.,  All Rights Reserved
+;;; Copyright (C) 1985 by Lucid Inc.,  All Rights Reserved
 ;;;
-;;; ***************************************************************************
-;;; KKERNEL.LISP
 ;;; The kernel-kernel allows object-oriented systems to share hooks.
-;;;
+
 
 (in-package :flavors)
 
 (defun send (instance message &rest args)
   (apply 'flavor-send instance message args))
 
-(lucid::declare-machine-class lucid::common)
-
 (define-compiler-macro send (instance message &rest args)
   `(flavor-send ,instance ,message ,@args))
 
-(lucid::undeclare-machine-class)
-
-(lucid::defstruct-simple-predicate %instance instancep)
+;; (lucid::defstruct-simple-predicate %instance instancep)
 
 (defparameter lucid::*flavors-instance-type* '%instance)
 

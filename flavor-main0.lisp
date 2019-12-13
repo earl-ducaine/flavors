@@ -73,9 +73,7 @@
 (defvar *default-combination*'(:daemon . :base-flavor-last)
   "Something like (:daemon . :base-flavor-last).")
 
-;;;
 ;;; Internal specials.
-;;;
 
 ;;; Options that alone mean all of the instance variables.
 (defparameter *var-options*
@@ -83,7 +81,6 @@
     :settable-instance-variables :initable-instance-variables
     :ordered-instance-variables))
 
-(eval-when (:execute :compile-toplevel)
 
   (defbits changed
       ;; Recompute all-components, compute everything if change.
@@ -109,7 +106,7 @@
                         ; Compiled and abstract means compiled methods.
   wayward-p)            ; Has instances but is currently uninstantiable.
 
-;;;More on method structures below
+;;; More on method structures below
 (defstruct (method-structure (:print-function private-structure-printer)
                              (:constructor make-method-structure
                                            (&optional methods)))
@@ -126,22 +123,23 @@
   (init-keywords nil)
   (required-inits nil)
   (method-env nil)
-  (combinations nil)    ; Assoc of name to combination 
+  ;; Assoc of name to combination 
+  (combinations nil)
   (prefix nil)
-
   (descriptor nil)
   (required-inits* nil)
   (init-keywords* nil)
   (default-plist* nil)
-  (iv-keywords* nil)    ; Assoc of var to position?
-
+  ;; Assoc of var to position?
+  (iv-keywords* nil)    
   (dependents nil)
   (changed 1)
   (flags 0)
   (methods (make-method-structure))
   (all-components+ nil)
   (instance-env nil)
-  (changed-methods nil)) ; Vector of lists.
+  ;; Vector of lists.
+  (changed-methods nil)) 
 
 (defun print-flavor (object stream depth)
   (declare (ignore depth))
@@ -171,8 +169,6 @@
     `(or (flavor-wayward-p ,flavor)
          (and (flavor-descriptor ,flavor)
               (instance-descriptor-instantiated-p (flavor-descriptor ,flavor)))))
-
-)
 
 (lucid::defstruct-runtime-slot-function flavor descriptor flavor)
 (lucid::defstruct-runtime-slot-function flavor methods flavor)

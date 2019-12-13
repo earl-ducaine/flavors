@@ -1,6 +1,6 @@
 ;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: LUCID; Base: 10 -*-
 ;;;
-;;;; flavors-macros.lisp, Module FLAVORS
+;;; flavors-macros.lisp, Module FLAVORS
 
 ;;; Copyright (C) 1989 by Lucid, Inc.  All Rights Reserved
 
@@ -28,7 +28,3 @@
 
 (defmacro get-setf-method-expander (x)
   `(gethash ,x *setf-method-expander-table*))
-
-(defmacro undeclare-machine-class ())
-
-

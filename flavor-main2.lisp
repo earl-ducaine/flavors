@@ -935,9 +935,3 @@
   "See defwhopper."
   `(apply %continuation t ,@args))
 
-
-;;; Redefine flavors-available-p
-(in-package 'system)
-(export 'flavors-available-p)
-(defun flavors-available-p ()
-  t)

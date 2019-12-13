@@ -6,9 +6,7 @@
 ;;; ***************************************************************************
 ;;;
 
-(in-package "FLAVORS")
-
-(eval-when (eval :compile-toplevel)
+(in-package :flavors)
 
 (defmacro case-construct-methods (function-names function-methods)
   ;;; function-names=primary=(flavor-name-key-primary1
@@ -39,7 +37,6 @@
 	  (push (list fn-key (car fn-meth))
 		construct)))))
 
-)
 
 (defcombination-ordering daemon-ordering-primary (order)
   (order-wrappers :base-flavor-first 'wrappers '(:wrapper :whopper))
