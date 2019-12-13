@@ -1,12 +1,8 @@
-;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: LUCID; Base: 10 -*-
-;;;
 ;;; FLAVORS-PACKAGE, Module FLAVORS
 ;;;
-;;; ***************************************************************************
 ;;;
 ;;;        Copyright (C) 1987,1988,1989 by Lucid Inc.,  All Rights Reserved
 ;;;
-;;; ***************************************************************************
 
 ;;; Flavors Package Definition.
 
@@ -50,8 +46,5 @@
 	    :vanilla-flavor
 	    :without-cleaning-flavors))
 
-  
+
 (push :flavors *features*)
-
-
-
