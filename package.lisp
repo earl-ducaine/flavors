@@ -10,18 +10,21 @@
   (:use :cl)
   (:export :common
 	   :defstruct-simple-predicate
-	   :string-append))
+	   :string-append
+	   :symbol-macro-let
+	   :compiler-let))
 
 (defpackage :flavors
   (:use :cl)
   (:nicknames :flavor-internals)
-  (:import-from :lucid :string-append)
+  (:import-from :lucid :string-append :symbol-macro-let :compiler-let)
   (:shadow :defmethod
 	   :make-instance
 	   :find-method
 	   :undefmethod
 	   :method
-	   :make-method)
+	   :make-method
+	   :slot-value)
   (:export  :*all-flavor-names*
 	    :cleanup-all-flavors
 	    :compile-flavor-methods

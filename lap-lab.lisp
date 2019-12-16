@@ -29,14 +29,6 @@
 (defun append-symbols (&rest symbols)
   (intern (apply #'string-append symbols)))
 
-(defmacro def-compiler-macro (name lambda-list &body body)
-  `(defmacro (def-compiler-macro ,name ,(get-target-name))
-       ,lambda-list ,@body))
-
-(defmacro define-compiler-macro-alt (name arglist &body body)
-  `(eval-when (:compile-toplevel :load-toplevel :exec)
-     (lucid::def-compiler-macro ,name ,arglist ,@body)))
-
 (defmacro defstruct-simple-predicate (structure-name &optional predicate-name)
   ;; Defines a simple structure predicate which does not check for
   ;; inclusions
@@ -46,7 +38,7 @@
      (defun ,predicate-name (x)
        (and (structurep x)
 	    (find-class ',structure-name nil)
-	    (typep x ',structure-name))) 
+	    (typep x ',structure-name)))
      (define-compiler-macro ,predicate-name (x)
        (alexandria:once-only (x)
 	 (and (structurep x)
@@ -55,7 +47,7 @@
 
 ;; Used primarily by array-optimize.lisp (and by the now-obsolete file
 ;; apollo-runtime.lisp)
-(defmacro defstruct-runtime-slot-function (structure-name 
+(defmacro defstruct-runtime-slot-function (structure-name
 					   slot-name
 					   argument-name)
   ;; Evaluates the defstruct slot accessors when a file is compiled so
@@ -66,7 +58,7 @@
     `(unless (fboundp ',full-name)
        (defun ,full-name (,argument-name)
 	 (,full-name ,argument-name))
-       (def-compiler-macro (,full-name user)  (,argument-name)
+       (define-compiler-macro ,full-name  (,argument-name)
 	 (subst ,argument-name '.dummy-name.
 		 ',(swank::compiler-macroexpand-1 `(,full-name .dummy-name.))))
        (set-setf-method-expander
@@ -84,7 +76,7 @@
 ;;      (defun ,predicate-name (x)
 ;;        (and (structurep x)
 ;; 	    #+lucid (eq (structure-type x) ',structure-name)))
-;;      (def-compiler-macro ,predicate-name user) (x)
+;;      (define-compiler-macro ,predicate-name user) (x)
 ;;      (once-only (x)
 ;;        `(and (structurep ,x)
 ;; 	     (eq (structure-type ,x) ',',structure-name)))))

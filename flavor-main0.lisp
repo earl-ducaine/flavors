@@ -1,13 +1,13 @@
-;;; -*- Mode: LISP; Syntax: Common-lisp; Base: 10; Package: (FLAVORS (LISP FLAVOR-INTERNALS)) -*-
-;;; ***************************************************************************
+
+
 ;;;
 ;;;        Copyright (C) 1985 by Lucid Inc.,  All Rights Reserved
 ;;;
-;;; ***************************************************************************
+
 
 (in-package :flavors)
 
-(defun make-env (var-list ordered required 
+(defun make-env (var-list ordered required
                  settable gettable initable)
   (with-stacks (var-stack default-stack)
     (dolist (o ordered)
@@ -84,7 +84,7 @@
 
   (defbits changed
       ;; Recompute all-components, compute everything if change.
-  components            
+  components
   required-flavors      ; Check if we're instantiable.
   required-ivs          ; Ditto.
   iv-order              ; Maybe important to the kernel.
@@ -92,7 +92,7 @@
   all-methods           ; We only stay up-to-date if instantiated.  Redo all.
   required-methods      ; See if instantiable.
   required-inits        ; Recompute cached quantities after we know it's inst.
-  default-plist         ; 
+  default-plist         ;
   init-keywords
   iv-keywords)
 
@@ -123,7 +123,7 @@
   (init-keywords nil)
   (required-inits nil)
   (method-env nil)
-  ;; Assoc of name to combination 
+  ;; Assoc of name to combination
   (combinations nil)
   (prefix nil)
   (descriptor nil)
@@ -131,7 +131,7 @@
   (init-keywords* nil)
   (default-plist* nil)
   ;; Assoc of var to position?
-  (iv-keywords* nil)    
+  (iv-keywords* nil)
   (dependents nil)
   (changed 1)
   (flags 0)
@@ -139,7 +139,8 @@
   (all-components+ nil)
   (instance-env nil)
   ;; Vector of lists.
-  (changed-methods nil)) 
+  (changed-methods nil)
+  (documentation nil))
 
 (defun print-flavor (object stream depth)
   (declare (ignore depth))
@@ -237,7 +238,7 @@
 
 ;;; Returns the flavor symbol of which INSTANCE is an instance of.
 (defun flavor-type-of (instance)
-  (instance-descriptor-type 
+  (instance-descriptor-type
     (instance-descriptor instance)))
 
 
@@ -245,8 +246,8 @@
 ;;; inheretence.
 
 (defun flavor-typep (instance flavor)
-  (not (null 
-	(member (get-flavor flavor) 
+  (not (null
+	(member (get-flavor flavor)
 		(flavor-all-components  (get-flavor  (type-of
 						      instance)))))))
 
@@ -261,7 +262,7 @@
 (defun flavor-subtypep (type1 type2)
   (and (flavorp type1)
        (flavorp type2)
-       (member (get-flavor type2) 
+       (member (get-flavor type2)
 	       (flavor-all-components (get-flavor type1)))))
 
 (defparameter lucid::*flavors-flavor-symbol* 'flavor)
@@ -291,4 +292,3 @@
 ;; 	 ((structurep object)
 ;; 	  (advice-continue object type)))
 ;;        (advice-continue object type)))
-

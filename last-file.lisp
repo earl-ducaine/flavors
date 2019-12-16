@@ -11,10 +11,8 @@
 ;;; Initialize flavors
 ;;;
 
-;;; This is the LAST FILE of the flavors system.  
+;;; This is the LAST FILE of the flavors system.
 
-(in-package 'user)
+(in-package :cl-user)
 
 (pushnew :FLAVORS *features*)
-
-;;; EOF

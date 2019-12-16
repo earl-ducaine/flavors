@@ -1,15 +1,14 @@
-;;; -*- Mode: LISP; Syntax: Common-lisp; Base: 10; Package: (FLAVORS (LISP FLAVOR-INTERNALS)) -*-
-;;; ***************************************************************************
+
 ;;;
 ;;;        Copyright (C) 1985 by Lucid Inc.,  All Rights Reserved
 ;;;
-;;; ***************************************************************************
 
-(in-package "FLAVORS")
+
+(in-package :flavors)
 
 ;;;
 ;;; This is the heart of flavors - the routine that calculates the various
-;;; parts of a flavor in sequence.  Flavor-all-components is split off 
+;;; parts of a flavor in sequence.  Flavor-all-components is split off
 ;;; so that it can be used in other places.
 ;;;
 
@@ -27,13 +26,13 @@
 
 (defvar *flavors-compile* nil) ; If T, not just cleaning up.
 ;; Used by compiler-compile-flavors, so it can set the handlers itself.")
-(defvar *dont-do-methods* nil) 
+(defvar *dont-do-methods* nil)
 
 (defvar *uninstantiable* nil) ; (flavor why-string &rest why-args)
 (defvar *inheritablep* nil) ; (flavor message) --> T, nil, or :redefine
 (defvar *remap* nil) ; (flavor)
 (defvar *definer* nil) ; (message form)
-       (defvar *set-handlers* nil) ; (flavor name-stack fn-stack all-p)
+(defvar *set-handlers* nil) ; (flavor name-stack fn-stack all-p)
 ;; Note: nil means no handler
 
 (defvar *methods* nil) ; Assoc of name to assoc of slot to list of methods.
@@ -44,7 +43,7 @@
 
 ;;;
 ;;; Stuff used in cleaning up.
-;;; 
+;;;
 
 
 (defun dissociate-instances (flavor why &rest why-args)
@@ -68,19 +67,19 @@
 (defun descriptor-set-handlers (descriptor names fn-stack all-p)
   (when descriptor
     (dotimes (i (length names))
-      (cond ((aref fn-stack i)
-             (handle-message (aref names i) descriptor (aref fn-stack i)))
-            (t (unhandle-message (aref names i) descriptor))))
+      (cond
+	((aref fn-stack i)
+	 (handle-message (aref names i) descriptor (aref fn-stack i)))
+	(t (unhandle-message (aref names i) descriptor))))
     (when all-p
       (do-handlers ((h fn) descriptor)
-                   (declare (ignore fn))
-		   fn
-                   (unless (find h names)
-                     (unhandle-message h descriptor))))))
+	fn
+	(unless (find h names)
+	  (unhandle-message h descriptor))))))
 
-;;; This should only get called if the flavor is instantiable, not wayward.
-;;; This stuff should happen both at load-time and compile-time.
-
+;;; This should only get called if the flavor is instantiable, not
+;;; wayward.  This stuff should happen both at load-time and
+;;; compile-time.
 (defun flavor-set-handlers (flavor names fns all-p)
   (let* ((old-desc (flavor-descriptor flavor))
          (env (flavor-instance-env flavor))
@@ -130,8 +129,8 @@
 ;;; Then go through the methods and generate the code.
 
 (defun internal-cleanup-flavor
-       (flavor &optional (really *cleanup-enable*)
-               &aux all-components (*flavors-compile* *flavors-compile*))
+    (flavor &optional (really *cleanup-enable*)
+     &aux all-components (*flavors-compile* *flavors-compile*))
   (unless really (return-from internal-cleanup-flavor nil))
   (if *flavors-compile*
       (if (flavor-compiled-p flavor) (setq *flavors-compile* nil)
@@ -147,7 +146,7 @@
                (let ((rflavors nil))
                  (dolist (f (flavor-required-flavors c))
                    (unless (member (get-flavor f) all-components)
-		     ;change f to (get-flavor f). moe 12/30/85
+					;change f to (get-flavor f). moe 12/30/85
 		     (push f rflavors))) (when rflavors
                    (funcall *uninstantiable* flavor
                             "Additional required flavors: ~S." rflavors))))))
@@ -167,8 +166,8 @@
 		   (dolist (c most-components)
 		     (dolist (ri req-iv)
 		       (when (find ri (instance-env-vector
-					    (flavor-instance-env c)))
-			    (push c rivs))
+				       (flavor-instance-env c)))
+			 (push c rivs))
 		       ))
 		   (when (not rivs)
 		     (funcall *uninstantiable*
@@ -203,16 +202,16 @@
       (set-stack-length combinations (length methods))
       (set-stack-length functions (length methods))
       (flet
-        ((defining-form (fn flavor description form)
-           (declare (inline defining-form))
-           `(progn (setf (get ',fn 'description) ',(copy-seq description))
-                   (internal-define-method
-                    ,fn ,(flavor-instance-env flavor) (&rest %combined-args)
-                    ,(list form))
-                   (method-add
-                    ',*message* :combined ',fn
-                    (flavor-methods (get-flavor ',(flavor-name flavor))))
-		   )))
+	  ((defining-form (fn flavor description form)
+	     (declare (inline defining-form))
+	     `(progn (setf (get ',fn 'description) ',(copy-seq description))
+		     (internal-define-method
+		      ,fn ,(flavor-instance-env flavor) (&rest %combined-args)
+		      ,(list form))
+		     (method-add
+		      ',*message* :combined ',fn
+		      (flavor-methods (get-flavor ',(flavor-name flavor))))
+		     )))
         (dolist (c all-components)
           (dotimes (i (length methods))
             (let* ((*message* (aref methods i))
@@ -242,7 +241,7 @@
               (let (inherit fn)
                 (dolist (c all-components)
                   (setq fn (method-find *message* :combined (flavor-methods
-							      c)))
+							     c)))
                   (when (setq inherit
                               (and fn (equalp *description* (get fn 'description))
                                    (= (length (method-called-methods fn))
@@ -252,22 +251,22 @@
                                    (funcall *inheritablep* c *message*)))
                     (return nil)))
                 (cond
-                 ((or (eq inherit :redefine) (null inherit))
-						;makes a combined method by
-						;default. Why?
-                  (unless fn (setq fn (flavor-function-name
-                                       (flavor-name flavor) *message* :combined)))
-                  (let ((form
-                         (funcall (combination-mixer (car comb)) (cdr comb))))
-		    (cond ((eq (car form) 'method-apply)
-                           (setf (aref functions i) (cadr form)))
-                          (form (funcall *definer* fn
+		  ((or (eq inherit :redefine) (null inherit))
+					;makes a combined method by
+					;default. Why?
+		   (unless fn (setq fn (flavor-function-name
+					(flavor-name flavor) *message* :combined)))
+		   (let ((form
+			  (funcall (combination-mixer (car comb)) (cdr comb))))
+		     (cond ((eq (car form) 'method-apply)
+			    (setf (aref functions i) (cadr form)))
+			   (form (funcall *definer* fn
 					;changed by moe 11/5/85
 					;if form is nil, no combined
 					;method is needed
-					 (defining-form fn flavor *description* form))
-				(setf (aref functions i) fn)))))
-                 (t (setf (aref functions i) fn))))))))
+					  (defining-form fn flavor *description* form))
+				 (setf (aref functions i) fn)))))
+		  (t (setf (aref functions i) fn))))))))
       (when (changed-required-methods (flavor-changed flavor))
         (cond ((flavor-abstract-p flavor))
               (t (let ((rmethods nil))
@@ -279,15 +278,15 @@
 				     (and (flavor-descriptor flavor)
 					  (get-handler m
 						       (flavor-descriptor flavor))))
-                         (push m rmethods)))))
+			   (push m rmethods)))))
                    (when rmethods
                      (funcall *uninstantiable* flavor
                               "Additional required methods: ~S." rmethods)))))
         (setf (changed-required-methods (flavor-changed flavor)) nil))
       (unless (flavor-abstract-p flavor)
         (funcall *set-handlers* flavor methods functions	;unhandles
-						                ;method here
-                 (changed-all-methods (flavor-changed flavor))))))	
+					;method here
+                 (changed-all-methods (flavor-changed flavor))))))
   (dealloc-tiny-stack (flavor-changed-methods flavor))
   (setf (changed-all-methods (Flavor-changed flavor)) nil)
   (setf (flavor-compiled-p flavor) t)
@@ -295,7 +294,7 @@
     (setf (flavor-instance-env flavor)
 	  (calculate-instance-env flavor))	;update instance env here
     (let* ((env (flavor-instance-env flavor))   ;moe 12/19/85
-           (vec (iv-env-vector env))           
+           (vec (iv-env-vector env))
            (ables (method-env-ables env))
            (keyword (find-package "KEYWORD"))
            res)
@@ -343,11 +342,11 @@
 	 (t (touch-components ,f ,stack ,result-stack ,touched))))
 
 (defun touch-components (f stack result-stack touched)
-    (vector-push-extend f touched)
-    (dolist (c (flavor-components f)) 
-      (touch (get-flavor c) stack result-stack touched))
-    (when (find f stack) (vector-push-extend f result-stack))
-    (vector-pop touched))
+  (vector-push-extend f touched)
+  (dolist (c (flavor-components f))
+    (touch (get-flavor c) stack result-stack touched))
+  (when (find f stack) (vector-push-extend f result-stack))
+  (vector-pop touched))
 
 
 ;;; We try to clean up the components first so we can inherit their
@@ -357,7 +356,7 @@
 ;;;
 ;;; We traverse the tree of components, keeping track of the current
 ;;; path in touched (thus preventing loops), and ignoring when we
-;;; hit the current path again. 
+;;; hit the current path again.
 
 (defun order-flavors (stack result-stack)
   (with-stacks (touched)
@@ -376,7 +375,7 @@
 
 (defun cleanup-flavor (flavor)
   "Cleans the flavor."
-  (when (symbolp flavor) (setq flavor (get-flavor flavor)))  
+  (when (symbolp flavor) (setq flavor (get-flavor flavor)))
   (let ((*uninstantiable* #'dissociate-instances)
         (*inheritablep* #'message-clean-p)
         (*definer* #'(lambda (name form)
@@ -384,7 +383,7 @@
 		       name
                        (if *flavor-compile-methods*
                            (funcall (compile nil `(lambda () ,form)))
-                           (eval form))))              
+                           (eval form))))
         (*set-handlers* #'flavor-set-handlers))
     (internal-cleanup-flavor flavor)))
 
@@ -395,7 +394,7 @@
 
 (defun recompile-flavor (flavor-name &optional message (do-dependents t))
   "Use this when something compiled into a combined method has changed,
-  for instance a macro used by a wrapper and hence compiled into the 
+  for instance a macro used by a wrapper and hence compiled into the
   combined method."
   (let ((flavor (get-flavor flavor-name))
         (*uninstantiable* #'dissociate-instances)
@@ -405,17 +404,17 @@
 		       name
                        (if *flavor-compile-methods*
                            (funcall (compile nil `(lambda () ,form)))
-                           (eval form))))              
+                           (eval form))))
         (*set-handlers* #'flavor-set-handlers))
     (cond (do-dependents
-           (with-stacks (flavors ordered)
-             (do-inheriting-flavors (flavor flavor flavors)
-               (rework-flavor flavor)
-               (if (null message)
-                   (setf (changed-all-methods (flavor-changed flavor)) t)
-                   (rework-methods flavor message)))
-             (order-flavors flavors ordered)
-             (dovec (o ordered) (internal-cleanup-flavor o))))
+	      (with-stacks (flavors ordered)
+		(do-inheriting-flavors (flavor flavor flavors)
+		  (rework-flavor flavor)
+		  (if (null message)
+		      (setf (changed-all-methods (flavor-changed flavor)) t)
+		      (rework-methods flavor message)))
+		(order-flavors flavors ordered)
+		(dovec (o ordered) (internal-cleanup-flavor o))))
           ((null message)
            (rework-flavor flavor)
            (setf (changed-all-methods (flavor-changed flavor)) t)
@@ -426,29 +425,29 @@
 
 (Defvar *flavors-in-compiler* nil)
 
-;(defmacro compile-flavor-methods (&rest flavors)
-;  `(progn (eval-when (eval) (setq *flavors-in-compiler* nil))
-;          (eval-when (compile) (setq *Flavors-in-compiler* t))
-;          (compile-flavors-aux ,flavors)
-;          nil))
+					;(defmacro compile-flavor-methods (&rest flavors)
+					;  `(progn (eval-when (eval) (setq *flavors-in-compiler* nil))
+					;          (eval-when (compile) (setq *Flavors-in-compiler* t))
+					;          (compile-flavors-aux ,flavors)
+					;          nil))
 
 (defmacro compile-flavor-methods (&rest flavors);moe 1/29/86
-  `(progn 
-       (eval-when (compile load)
-	 (compiler-compile-flavors . ,flavors))
-       (eval-when (eval)
-	 (dolist (flavor ',flavors)
-	   (compile-flavor flavor)))))
+  `(progn
+     (eval-when (compile load)
+       (compiler-compile-flavors . ,flavors))
+     (eval-when (eval)
+       (dolist (flavor ',flavors)
+	 (compile-flavor flavor)))))
 
 
 (eval-when (eval :compile-toplevel)
 
-(defmacro compile-flavors-aux (flavors)
-  (if *flavors-in-compiler*
-      `(compiler-compile-flavors ,@flavors)
-      `(mapcar 'compile-flavor ',flavors)))
+  (defmacro compile-flavors-aux (flavors)
+    (if *flavors-in-compiler*
+	`(compiler-compile-flavors ,@flavors)
+	`(mapcar 'compile-flavor ',flavors)))
 
-)
+  )
 
 (defun compile-flavor (flavor &optional (*flavor-compile-methods*
                                          *flavor-compile-methods*))
@@ -470,7 +469,7 @@
     (order-flavors stack ordered)
     (dotimes (i (length ordered))
       (cleanup-flavor (aref ordered i)))
-    (setf (fill-pointer ordered) 0) 
+    (setf (fill-pointer ordered) 0)
     (dolist (name flavor-names)
       (let ((flavor (get-flavor name)))
         (setf (changed-all-methods (flavor-changed flavor)) t)))
@@ -490,7 +489,7 @@
                 (declare (ignore all-p))
 		all-p
                 (push `(flavor-set-handlers (get-flavor ',(flavor-name flavor))
-                         ',(copy-seq name-stack) ',(copy-seq fn-stack) t)
+					    ',(copy-seq name-stack) ',(copy-seq fn-stack) t)
                       forms)))
            (*flavors-compile* t))
       (order-flavors stack ordered)
@@ -509,10 +508,10 @@
 
 (eval-when (eval :compile-toplevel)
 
-(defmacro get-slot (message slot)
-  `(my-assoc ,message (my-assoc ,slot *methods*)))
+  (defmacro get-slot (message slot)
+    `(my-assoc ,message (my-assoc ,slot *methods*)))
 
-)
+  )
 
 (defun method-list (slot-name)
   "Takes the slot-name given in order-methods.  Returns the list of
@@ -528,7 +527,7 @@
               (get-slot *message* slot-name-or-list))))
 
 (defun wrapper-mix (slot-name-or-list form)
-  "Wraps the form with the wrappers (and whoppers) of the given types. 
+  "Wraps the form with the wrappers (and whoppers) of the given types.
   (See defwrapper, defwhopper.)  The ordering of the wrapper functions
   is the reverse of the order in which the wrappings will be encountered
   at runtime."
@@ -539,8 +538,7 @@
     form))
 
 
-(eval-when (eval :compile-toplevel)
-
+;; (eval-when (:execute :compile-toplevel)
 (defmacro defcombination-ordering (name (arg) &body body)
   "Should use ORDER-METHODS or ORDER-WRAPPERS (almost exclusively) to
   order the method types of a method into named slots.
@@ -552,6 +550,7 @@
        (let ((type (car cons))
              (method (cdr cons)))
          ,@body))))
+;;)
 
 (defmacro order-methods (order slot types)
   "Slot and types are evaled.  Slot-name is the name used in message-list, etc.
@@ -560,33 +559,33 @@
   in order to the list of methods in the slot."
   (case order
     (:primary `(if reverse-and-describe
-                   (let ((thing (car (get-slot *message* ,slot))))
-                     (unless (find thing *called-methods*)
-                       (vector-push-extend thing *called-methods*)))
-                   (when (member type ,types)
-                     (unless (get-slot *message* ,slot)
-                       (push method (get-slot *message* ,slot))))))
+		   (let ((thing (car (get-slot *message* ,slot))))
+		     (unless (find thing *called-methods*)
+		       (vector-push-extend thing *called-methods*)))
+		   (when (member type ,types)
+		     (unless (get-slot *message* ,slot)
+		       (push method (get-slot *message* ,slot))))))
     (:base-flavor-first `(if reverse-and-describe
-                             (dolist (m (get-slot *message* ,slot))
-                               (unless (find m *called-methods*)
-                                 (vector-push-extend m *called-methods*)))
-                             (when (member type ,types)
-                               (push method (get-slot *message* ,slot)))))
+			     (dolist (m (get-slot *message* ,slot))
+			       (unless (find m *called-methods*)
+				 (vector-push-extend m *called-methods*)))
+			     (when (member type ,types)
+			       (push method (get-slot *message* ,slot)))))
     (:base-flavor-last `(if reverse-and-describe
-                            (dolist (m (nreversef (get-slot *message* ,slot)))
-                              (unless (find m *called-methods*)
-                                (vector-push-extend m *called-methods*)))
-                            (when (member type ,types)
-                              (push method (get-slot *message* ,slot)))))))
+			    (dolist (m (nreversef (get-slot *message* ,slot)))
+			      (unless (find m *called-methods*)
+				(vector-push-extend m *called-methods*)))
+			    (when (member type ,types)
+			      (push method (get-slot *message* ,slot)))))))
 
 (defmacro order-wrappers (order slot types)
   "Just like order-methods, except remembers the list of wrapper functions
   along with the list of methods."
   `(cond (reverse-and-describe
-          ,(if (eq order :base-flavor-last)
-               `(nreversef (get-slot *message* ,slot)))
-          (vector-push-extend (get-slot *message* ,slot) *description*))
-         (t (order-methods ,order ,slot ,types))))
+	  ,(if (eq order :base-flavor-last)
+	       `(nreversef (get-slot *message* ,slot)))
+	  (vector-push-extend (get-slot *message* ,slot) *description*))
+	 (t (order-methods ,order ,slot ,types))))
 
 
 (defmacro defcombination (name ordering-fn (order-arg) &body body)
@@ -598,18 +597,18 @@
   The system will optimize only bare method-calls, not those surrounded
   by AND, etc."
   `(make-combination ',name ',ordering-fn
-                     #'(lambda (,order-arg)
+		     #'(lambda (,order-arg)
 			 (declare (ignore ,order-arg))
 			 ,@body)))
 
-)
+;;  )
 
-;;;
+;;;
 ;;; Random user-level functions
 ;;;
 
 (defun symeval-in-instance (instance symbol &optional (no-error-p nil)
-				     (unbound nil))
+					      (unbound nil))
   "If no-error-p is non-nil, unbound ivs will simply return the value of
   the second optional. Ivs not present in the environment will signal an error
   unless no-error-p is non-nil."
@@ -619,12 +618,12 @@
     (cond ((null pos)				;moe 12/18/85
 	   (if no-error-p nil
 	       (error "Instance variable ~S not found in instance ~S."
-                  symbol instance)))
+		      symbol instance)))
           ((slot-unbound-p instance pos)
            (if unbound unbound
                (error "Instance variable ~S unbound." symbol)))
           (t (%instance-ref instance (1+ pos))))));moe 1/11/86
-						;emulate old instance-ref
+					;emulate old instance-ref
 
 (defun set-in-instance (instance symbol value)
   "An error is signalled if the symbol is not an instance variable in the given
@@ -636,43 +635,43 @@
            (error "Instance variable ~S not found in instance ~S."
                   symbol instance))
           (t (setf (%instance-ref instance (1+ pos)) value)))))	;moe 1/11/86
-						;emulate old instance-ref with
-						;1+ 
+					;emulate old instance-ref with
+					;1+
 (defun get-handler-for (object message)
   "Returns the function that handles the given message."
-  (get-handler message object)) 
+  (get-handler message object))
 
 (eval-when (eval :compile-toplevel)
 
-(defmacro lexpr-funcall-self (message &rest arguments)
-  "Supplied for compatibility with Symbolics Flavors."
-  `(apply #'send self ,message ,@arguments))
+  (defmacro lexpr-funcall-self (message &rest arguments)
+    "Supplied for compatibility with Symbolics Flavors."
+    `(apply #'send self ,message ,@arguments))
 
-(defmacro funcall-self (message &rest arguments)
-  "Supplied for compatibility with Symbolics Flavors."
-  `(send self ,message ,@arguments))
+  (defmacro funcall-self (message &rest arguments)
+    "Supplied for compatibility with Symbolics Flavors."
+    `(send self ,message ,@arguments))
 
-)
+  )
 
 (defun flavor-allowed-init-keywords (flavor-name)
   (let ((flavor (get-flavor flavor-name))
         (res nil))
     (dolist (flav (remove (get-flavor 'vanilla-flavor)
 			  (flavor-all-components flavor)))
-      (compile-flavor flav)                             
+      (compile-flavor flav)
       (setf res (append (flavor-init-keywords flav) res))
-      (dolist (key-list (flavor-iv-keywords* flav))	
-	(setf res (cons (car key-list) res))))       
-    (delete-duplicates                               
-      (sort res #'string-lessp :key #'symbol-name))))	
+      (dolist (key-list (flavor-iv-keywords* flav))
+	(setf res (cons (car key-list) res))))
+    (delete-duplicates
+     (sort res #'string-lessp :key #'symbol-name))))
 
 (defun flavor-allows-init-keyword-p (flavor-name keyword)
   "Returns the flavor that provides this init option, or NIL if none.
    If it is an iv keyword, it returns the composite flavor name"
   (let ((flavor (get-flavor flavor-name))
 	(iv-list ()))
-    (dolist (flav (flavor-all-components flavor))               
-      (dolist (iv-keyword-list  (flavor-iv-keywords* flavor))	
+    (dolist (flav (flavor-all-components flavor))
+      (dolist (iv-keyword-list  (flavor-iv-keywords* flavor))
 	(push (car iv-keyword-list) iv-list))
       (if (or (find keyword (flavor-init-keywords flav))
 	      (find keyword iv-list))
@@ -705,7 +704,7 @@
               (let ((iv (cdr (assoc (car plist) (flavor-iv-keywords* flavor)))))
                 (cond (iv (when (slot-unbound-p self iv)
                             (setf (%instance-ref self (1+ iv)) (cadr plist))
-			    ;moe 1/11/86 emulate old instance-ref with 1+
+					;moe 1/11/86 emulate old instance-ref with 1+
                             (vector-push-extend (car plist) used-properties)))
                       ((find (car plist) (flavor-init-keywords* flavor))
                        (when (eq 'frob (getf new-plist (car plist) 'frob))
@@ -721,7 +720,7 @@
               (let ((iv (cdr (assoc (car plist) (flavor-iv-keywords* flavor)))))
                 (cond (iv (when (slot-unbound-p self iv)
                             (setf (%instance-ref self (1+ iv)) (eval (cadr
-			    plist))) ;moe 1/11/86
+								      plist))) ;moe 1/11/86
                             (vector-push-extend (car plist) used-properties)))
                       ((find (car plist) (flavor-init-keywords* flavor))
                        (when (eq 'frob (getf new-plist (car plist) 'frob))
@@ -776,45 +775,45 @@
 	 (fl-methods (flavor-methods flavor))
 	 (meth-types (method-types message fl-methods))
 	 (method-exists-p (member type meth-types :key #'car))
-	                                        ;does method
-						;exist for this flavor?
+					;does method
+					;exist for this flavor?
 
 	 (methods-remaining-p t ))		;assume there are some method
-						;types remaining for this
-						;message 
-					
+					;types remaining for this
+					;message
+
     (if method-exists-p
 	(setq methods-remaining-p
 	      (deletef type (method-types message fl-methods)
 		       :key #'car))
 	(error "Method ~S not defined for flavor ~S." message
 	       flavor-name))		        ;if deletef returns nil, there
-						;are no more remaining method
-						;types for this message.
-						;In this case, %undefmethod
-						;needs to update the method
-						;info in the method-structure.
-						;If deletef is non-nil, then
-						;deletef handles the update.
+					;are no more remaining method
+					;types for this message.
+					;In this case, %undefmethod
+					;needs to update the method
+					;info in the method-structure.
+					;If deletef is non-nil, then
+					;deletef handles the update.
     (when (and method-exists-p (null methods-remaining-p))
       (setf (method-structure-methods fl-methods)
 	    (delete message (method-structure-methods fl-methods)))
       (setf (method-structure-types fl-methods)
 	    (delete nil (method-structure-types fl-methods))))
-    (recompile-flavor (flavor-name flavor) message)	
-						;recompile-flavor propagates
-						;the changes in
-						;method-structure to the
-						;message hashtable
+    (recompile-flavor (flavor-name flavor) message)
+					;recompile-flavor propagates
+					;the changes in
+					;method-structure to the
+					;message hashtable
     )
   message)
 
 ;;; Defines a function that takes the argument name and a a rest arg of the
-;;; body, and that does the transformation for that wrapper, returning the 
+;;; body, and that does the transformation for that wrapper, returning the
 ;;; new form.
 
 (defmacro defwrapper ((flavor type &optional (method nil mp))
-                      (args . passed-body) &body body)
+				     (args . passed-body) &body body)
   "Wrappers are sort of like macros, getting expanded into the combined method
   for flavors that inherit it.  The args is either ignore or a list that
   is destructure-bound at send-time to the method's argument-list.  The
@@ -824,43 +823,43 @@
   (if (eq args 'ignore) (setq args nil))
   (let* ((name (flavor-function-name flavor method type))
          (new-defun `(defun ,name (,passed-body)	;took out &rest
-						;put in call to list 11/15/85 moe
-		       (setq ,passed-body (list ,passed-body))	
+					;put in call to list 11/15/85 moe
+		       (setq ,passed-body (list ,passed-body))
                        (let ((form (progn ,@body)))
                          `(mydlet ((,',args %combined-args))
                             ,form)))))
     `(progn
-      (eval-when (compile eval load)
-        ,new-defun)
-      (eval-when (compile eval)
-        (let ((new-defun ',new-defun)
-              (old-defun (get ',name 'old-defun))
-              (new-hash nil))
-          (when (or (and (null old-defun)
-                         (let ((hash (get ',name 'sxhash)))
-                           (or (null hash)
-                               (not (= hash (setq new-hash (sxhash new-defun)))))))
-                    (not (equal new-defun old-defun)))
-            (method-add ',method ',type ',name
-                        (flavor-methods (get-flavor ',flavor)))
-            (recompile-flavor ',flavor ',method)
-            (setf (get ',name 'old-defun) new-defun)
-            (if new-hash
-                (setf (get ',name 'sxhash) new-hash)))))
-      (eval-when (load)
-        (let ((hash (get ',name 'sxhash))
-              (new (sxhash ,new-defun)))
-          (when (or (null hash) (not (= hash new)))
-            (method-add ',method ',type ',name
-                        (flavor-methods (get-flavor ',flavor)))
-            (recompile-flavor ',flavor ',method)
-            (setf (get ',name 'sxhash) new))))
-      ',method)))
+       (eval-when (compile eval load)
+	 ,new-defun)
+       (eval-when (compile eval)
+	 (let ((new-defun ',new-defun)
+	       (old-defun (get ',name 'old-defun))
+	       (new-hash nil))
+	   (when (or (and (null old-defun)
+			  (let ((hash (get ',name 'sxhash)))
+			    (or (null hash)
+				(not (= hash (setq new-hash (sxhash new-defun)))))))
+		     (not (equal new-defun old-defun)))
+	     (method-add ',method ',type ',name
+			 (flavor-methods (get-flavor ',flavor)))
+	     (recompile-flavor ',flavor ',method)
+	     (setf (get ',name 'old-defun) new-defun)
+	     (if new-hash
+		 (setf (get ',name 'sxhash) new-hash)))))
+       (eval-when (load)
+	 (let ((hash (get ',name 'sxhash))
+	       (new (sxhash ,new-defun)))
+	   (when (or (null hash) (not (= hash new)))
+	     (method-add ',method ',type ',name
+			 (flavor-methods (get-flavor ',flavor)))
+	     (recompile-flavor ',flavor ',method)
+	     (setf (get ',name 'sxhash) new))))
+       ',method)))
 
 
 (defmacro defmethod ((flavor-name type &optional (method nil methodp)
 				  (case-key nil case-keyp)) ;moe
-                     args &body forms)
+					 args &body forms)
   "Refer to the flavor documentation for details."
   ;; case requires type to specify :case
   (cond ((not methodp)
@@ -875,14 +874,19 @@
 	 (method-list nil)
 	 (function-name (if case-keyp
 			    (prog1
-			      (flavor-function-name flavor-name method
-						    case-key type)
+				(flavor-function-name flavor-name method
+						      case-key type)
 			      (setq method-list (cons method case-key)))
 			    (flavor-function-name flavor-name method type))))
     (unless (flavor-defined-p flavor)
       (error "Flavor ~S not defined." flavor-name))
     (multiple-value-bind (docs forms) (extract-doc-and-declares forms)
       `(eval-when (eval load :compile-toplevel)
+	 (format t "~%defmethod: ~a~%" (list 'internal-define-method ',function-name))
+
+	 ;; ,(flavor-instance-env flavor)
+	 ;; ',args (list ',@docs (list 'block ',method ',@forms))))
+	 ;; (break)
          (internal-define-method ,function-name ,(flavor-instance-env flavor)
                                  ,args (,@docs (block ,method ,@forms)))
          (%defmethod ',flavor-name (or ',method-list ',method)
@@ -911,7 +915,7 @@
          (type (or (pop method-and-type) :whopper))
          (whopper-method (flavor-function-name name method type "WHOPPER")))
     `(progn (defmethod (,name ,whopper-method)
-                       (%continuation %combined-args ,@args)
+		(%continuation %combined-args ,@args)
               ,@body)
             (defwrapper (,name ,type ,method) (nil . wrapper-body)
               `(apply #'send self ',',whopper-method
@@ -934,4 +938,3 @@
 (defmacro lexpr-continue-whopper (&rest args)
   "See defwhopper."
   `(apply %continuation t ,@args))
-

@@ -1,63 +1,59 @@
-;;; -*- Mode: LISP; Syntax: Common-lisp; Base: 10; Package: (FLAVOR-INTERNALS (LISP SYSTEM)) -*-
-;;; ***************************************************************************
 ;;;
 ;;;        Copyright (C) 1985 by Lucid Inc.,  All Rights Reserved
 ;;;
-;;; ***************************************************************************
 
 (in-package "FLAVORS")
 
 
 ;;; Definitions for the Method Cache.
 
-(eval-when (:execute :compile-toplevel)
+(eval-when (:execute :compile-toplevel :load-toplevel)
+  (defconstant log-2-method-cache-size 10)
+  (defconstant method-cache-size (ash 1 log-2-method-cache-size))
+  (defconstant log-2-method-cache-entry-size 2)
+  (defconstant method-cache-entry-size (ash 1 2))
+  (defconstant method-cache-entry-mask
+    (ash (1- method-cache-size) log-2-method-cache-entry-size))
 
-(defconstant log-2-method-cache-size 10)
-(defconstant method-cache-size (ash 1 log-2-method-cache-size))
-(defconstant log-2-method-cache-entry-size 2)
-(defconstant method-cache-entry-size (ash 1 2))
-(defconstant method-cache-entry-mask
-  (ash (1- method-cache-size) log-2-method-cache-entry-size))
+  (defvar *method-cache-table*)
 
-(defvar *method-cache-table*)
+  (defmacro cache-method-index (key1 key2)
+    `(lucid::logand&
+      (lucid::logxor& (lucid::%field ,key1 0 lucid::bits-per-fixnum)
+		      (lucid::%field ,key2 0 lucid::bits-per-fixnum))
+      method-cache-entry-mask))
 
-(defmacro cache-method-index (key1 key2)
-  `(lucid::logand&
-     (lucid::logxor& (lucid::%field ,key1 0 lucid::bits-per-fixnum)
-		     (lucid::%field ,key2 0 lucid::bits-per-fixnum))
-     method-cache-entry-mask))
+  (defmacro cached-method (key1 key2)
+    (alexandria:once-only (key1 key2)
+      `(let ((index (cache-method-index ,key1 ,key2)))
+	 (and (boundp '*method-cache-table*)
+	      (eq (svref *method-cache-table* (lucid::+& index 0)) ,key1)
+	      (eq (svref *method-cache-table* (lucid::+& index 1)) ,key2)
+	      (svref *method-cache-table* (lucid::+& index 2))))))
 
-(defmacro cached-method (key1 key2)
-  (alexandria:once-only (key1 key2)
-    `(let ((index (cache-method-index ,key1 ,key2)))
-       (and (boundp '*method-cache-table*)
-	    (eq (svref *method-cache-table* (lucid::+& index 0)) ,key1)
-	    (eq (svref *method-cache-table* (lucid::+& index 1)) ,key2)
-	    (svref *method-cache-table* (lucid::+& index 2))))))
-  
-(defmacro cache-method (key1 key2 value)
-  (alexandria:once-only (key1 key2)
-    `(let ((index (cache-method-index ,key1 ,key2)))
-       (unless (boundp '*method-cache-table*)
-	 (setq *method-cache-table*
-	       (with-static-area
-		   (lucid::new-simple-vector (* method-cache-size
-						method-cache-entry-size)))))
-       (setf (svref *method-cache-table* (lucid::+& index 0)) ,key1)
-       (setf (svref *method-cache-table* (lucid::+& index 1)) ,key2)
-       (setf (svref *method-cache-table* (lucid::+& index 2)) ,value))))
+  (defmacro cache-method (key1 key2 value)
+    (alexandria:once-only (key1 key2)
+      `(let ((index (cache-method-index ,key1 ,key2)))
+	 (unless (boundp '*method-cache-table*)
+	   (setq *method-cache-table*
+		 (with-static-area
+		     (lucid::new-simple-vector (* method-cache-size
+						  method-cache-entry-size)))))
+	 (setf (svref *method-cache-table* (lucid::+& index 0)) ,key1)
+	 (setf (svref *method-cache-table* (lucid::+& index 1)) ,key2)
+	 (setf (svref *method-cache-table* (lucid::+& index 2)) ,value))))
 
 
-(defmacro flush-method-cache ()
-  `(when (boundp '*method-cache-table*)
-     (lucid::simple-vector-fill *method-cache-table* 0 0 nil))))
+  (defmacro flush-method-cache ()
+    `(when (boundp '*method-cache-table*)
+       (lucid::simple-vector-fill *method-cache-table* 0 0 nil))))
 
 ;;; Random stuff and Environments.
 
 ;;; Takes a list of forms and returns values of a list of doc-strings
 ;;; and declares, and a list of the remaining forms.
 (eval-when (:execute compile load)
-(defun extract-doc-and-declares (forms)
+  (defun extract-doc-and-declares (forms)
     (do ((forms forms (cdr forms))
          (docs nil (cons (car forms) docs)))
         ((or (endp forms)
@@ -65,13 +61,13 @@
                   (not (and (listp (car forms))
                             (eq (caar forms) 'declare)))))
          (values (nreverse docs) forms))))
-)
+  )
 
 (eval-when (:execute :compile-toplevel)
 
   (defmacro self-and-descriptor (instance)
     ;; moe 2/19/86
-  `(values ,instance (%instance-ref ,instance 0))))
+    `(values ,instance (%instance-ref ,instance 0))))
 
 ;;; Environments.
 
@@ -91,7 +87,7 @@
                      res))))))
 
 ;; Defstructs
-(eval-when (:compile-toplevel :execute)
+(eval-when (:compile-toplevel :load-toplevel :execute)
   (defstruct (instance-descriptor
 	       (:type vector)
                (:constructor internal-make-id
@@ -117,8 +113,6 @@
 (defun make-instance-descriptor (type env default-handler)
   (internal-make-id type env (make-entry :function default-handler)))
 
-(eval-when (:execute :compile-toplevel)
-
 (defstruct (method (:print-function private-structure-printer)
                    (:predicate methodp)
                    (:constructor make-method (fn-name calls ivs current-symbol)))
@@ -126,8 +120,6 @@
   calls          ; List in reverse order.
   ivs            ; Vector of variable names or NIL.
   current-symbol)
-
-)
 
 (defun method-called-methods (method)
   (method-calls (symbol-value method)))
@@ -142,7 +134,7 @@
 #|
 ;;; add use of &funcall - 4/3/86 moe
 (defmacro funcall-entry (self message entry &rest args)
-  `(lucid::&funcall (entry-function ,entry) ,self ,message ,entry ,@args))
+`(lucid::&funcall (entry-function ,entry) ,self ,message ,entry ,@args))
 |#
 
 (defmacro apply-entry (self message entry &rest args)
@@ -152,22 +144,19 @@
 ;;; Special version of apply-entry to avoid consing.
 
 (eval-when (:execute :compile-toplevel)
-
-(defmacro xapply-entry (self message entry arg1 arg1p arg2 arg2p
-			     arg3 arg3p arg4 arg4p remaining-args)
-  `(let ((function (entry-function ,entry)))
-     (cond (,arg4p (apply function ,self ,message ,entry
-			  ,arg1 ,arg2 ,arg3 ,arg4 ,remaining-args))
-	   (,arg3p (funcall function ,self ,message ,entry ,arg1 ,arg2 ,arg3))
-	   (,arg2p (funcall function ,self ,message ,entry ,arg1 ,arg2))
-	   (,arg1p (funcall function ,self ,message ,entry ,arg1))
-	   (t (funcall function ,self ,message ,entry)))))
-
-)
+  (defmacro xapply-entry (self message entry arg1 arg1p arg2 arg2p
+			  arg3 arg3p arg4 arg4p remaining-args)
+    `(let ((function (entry-function ,entry)))
+       (cond (,arg4p (apply function ,self ,message ,entry
+			    ,arg1 ,arg2 ,arg3 ,arg4 ,remaining-args))
+	     (,arg3p (funcall function ,self ,message ,entry ,arg1 ,arg2 ,arg3))
+	     (,arg2p (funcall function ,self ,message ,entry ,arg1 ,arg2))
+	     (,arg1p (funcall function ,self ,message ,entry ,arg1))
+	     (t (funcall function ,self ,message ,entry))))))
 
 (eval-when (:execute compile load)
 
-(defmacro get-message ()
+  (defmacro get-message ()
     "Used in the body of a default handler, returns the message
     that invoked this handler."
     '%message))
@@ -187,22 +176,22 @@
 
 (eval-when (:execute :compile-toplevel)
 
-(defmacro set-symbol-function-default-handler (name args &body body)
-  "Like defun-default-handler but evaluates name"
-  (multiple-value-bind (docs forms) (extract-doc-and-declares body)
-    `(setf (symbol-function ,name)
-	   #'(lambda (self %message %entry ,@args)
-	       ,@docs
-	       (declare (ignore self %message %entry))
-	       ,@forms))))
+  (defmacro set-symbol-function-default-handler (name args &body body)
+    "Like defun-default-handler but evaluates name"
+    (multiple-value-bind (docs forms) (extract-doc-and-declares body)
+      `(setf (symbol-function ,name)
+	     #'(lambda (self %message %entry ,@args)
+		 ,@docs
+		 (declare (ignore self %message %entry))
+		 ,@forms))))
 
-)
+  )
 
 (defun flavor-send (instance message
 		    &optional (arg1 nil arg1p)
-			      (arg2 nil arg2p)
-			      (arg3 nil arg3p)
-			      (arg4 nil arg4p)
+		      (arg2 nil arg2p)
+		      (arg3 nil arg3p)
+		      (arg4 nil arg4p)
 		    &rest remaining-args)
   (declare (dynamic-extent remaining-args))
   (multiple-value-bind (self id) (self-and-descriptor instance)
@@ -265,43 +254,40 @@
   for instance or instance-descriptor inst-or-desc."
   (let (table)
     (cond
-     ((instancep inst-or-desc)
-      (multiple-value-bind (self id) (self-and-descriptor inst-or-desc)
-        (setq table (instance-descriptor-table id))
-        (unless (hash-table-p table)
-          (do-instance-resizing self)
-          (multiple-value-setq (self id) (self-and-descriptor self))
-          (setq table (instance-descriptor-table id))
-          (unless (hash-table-p table)
-            (error "Internal error: resizing #<Random Instance ~X> didn't work."
-                   (lucid::%pointer inst-or-desc))))))
-     (t (setq table (instance-descriptor-table inst-or-desc))))
+      ((instancep inst-or-desc)
+       (multiple-value-bind (self id) (self-and-descriptor inst-or-desc)
+	 (setq table (instance-descriptor-table id))
+	 (unless (hash-table-p table)
+	   (do-instance-resizing self)
+	   (multiple-value-setq (self id) (self-and-descriptor self))
+	   (setq table (instance-descriptor-table id))
+	   (unless (hash-table-p table)
+	     (error "Internal error: resizing #<Random Instance ~X> didn't work."
+		    (lucid::%pointer inst-or-desc))))))
+      (t (setq table (instance-descriptor-table inst-or-desc))))
     (let ((entry (gethash message table)))
       (if entry (method-fn-name (symbol-value (entry-function entry)))))))
 
-
-;;;
 ;;; Other instance-descriptor stuff.
-;;;
 
 (eval-when (:execute :compile-toplevel)
 
-(defmacro do-handlers (((name function) instance-descriptor) &body body)
-  "(((message method-fn-name) instance-descriptor) . body)
-  Does the body for each handler, with message and method-fn-name bound to
-  each successive handler binding."
-  `(block nil
-     (let ((table (instance-descriptor-table ,instance-descriptor)))
-       (unless (null table)
-         (maphash #'(lambda (,name entry)
-		      (declare (ignore ,name entry))
-                      (let ((,function
-                             (method-fn-name
-                              (symbol-value (entry-function entry)))))
-                        ,@body))
-                  table)))))
+  (defmacro do-handlers (((name function) instance-descriptor) &body body)
+    "(((message method-fn-name) instance-descriptor) . body) Does the
+   body for each handler, with message and method-fn-name bound to
+   each successive handler binding."
+    `(block nil
+       (let ((table (instance-descriptor-table ,instance-descriptor)))
+	 (unless (null table)
+	   (maphash #'(lambda (,name entry)
+			(declare (ignore ,name entry))
+			(let ((,function
+			       (method-fn-name
+				(symbol-value (entry-function entry)))))
+			  ,@body))
+		    table)))))
 
-)
+  )
 
 (defun instantiate-instance-descriptor (instance-descriptor)
   "Returns the new instance, all ivs set to unbound."
@@ -355,7 +341,7 @@
       (setf (svref cmap i) (freeze-entry id (svref cmap i))))))
 
 (defun freeze-instances (instance-descriptor)
-  "Makes the instances of this instance-descriptor deaf to changes in 
+  "Makes the instances of this instance-descriptor deaf to changes in
   method definition.  Use unfreeze-instance to wake it up again."
   (maphash #'(lambda (mess entry)
                (declare (ignore mess))
@@ -392,16 +378,16 @@
 
 (eval-when (:execute :compile-toplevel)
 
-(defmacro map-ivs (ivs instance-ivs)
-  `(let ((ivs ,ivs)
-         (instance-ivs ,instance-ivs))
-     (let ((res (if ivs (make-array (length ivs)))))
-       (dotimes (i (length ivs))
-         (let ((pos (position (svref ivs i) instance-ivs)))
-           (setf (svref res i) (if pos (1+ pos)))))
-       res)))
+  (defmacro map-ivs (ivs instance-ivs)
+    `(let ((ivs ,ivs)
+	   (instance-ivs ,instance-ivs))
+       (let ((res (if ivs (make-array (length ivs)))))
+	 (dotimes (i (length ivs))
+	   (let ((pos (position (svref ivs i) instance-ivs)))
+	     (setf (svref res i) (if pos (1+ pos)))))
+	 res)))
 
-)
+  )
 
 ;;; When we first map in a method, we make the cmap a simple vector.
 ;;; The first time we remap, we make it a fill-pointered adjustable vector and
@@ -426,10 +412,10 @@
             (entry-function entry) new-sym))))
 
 (defun remap-method
-       (method-fn-name
-        &optional
-        (new-function-object
-         (symbol-function (method-current-symbol (symbol-value method-fn-name)))))
+    (method-fn-name
+     &optional
+       (new-function-object
+	(symbol-function (method-current-symbol (symbol-value method-fn-name)))))
   (let* ((structure (symbol-value method-fn-name))
          (new-symbol (make-symbol (symbol-name method-fn-name)))
          (current (method-current-symbol structure)))
@@ -456,7 +442,7 @@
       (let ((structure (make-method fn-name called-methods ivs fn-name)))
         (setf (symbol-value fn-name) structure))))
 
-;;; When a method-call or method-apply expands, it sees if it finds the 
+;;; When a method-call or method-apply expands, it sees if it finds the
 ;;; called method in the list of methods this method is known to call.
 ;;; If so, it just references the corresponding slot
 ;;; (the last element gets slot zero) of the other-mapping-table.
@@ -468,24 +454,37 @@
 (defvar *calling-method* nil)
 (defvar *called-methods* nil)
 
-;;; Compiled: sml expands, install-method gets correct values, 
+;;; Compiled: sml expands, install-method gets correct values,
 ;;; %calling-method disappears.
 ;;; Interpreted: %calling-method is part of env; specials are nil at
 ;;; runtime / expansion time.
-;;;
 
+;; (defmacro internal-define-method (method-fn-name env args body)
+;;   "method-fn-name is a method-function-name (i.e. a symbol nobody else
+;;    knows about). env is an iv-environment. args is the arglist. body
+;;    is a list of forms. Expands to a form that, when evaluated,
+;;    defines a handler."
+;;   `(compiler-let ((*calling-method* ',method-fn-name)
+;;                   (*calling-ivs* ',(iv-env-vector env))
+;;                   (*called-methods* nil))
+;;      (lucid::symbol-macro-let ((%calling-method ',method-fn-name)
+;; 			       (%calling-ivs ',(iv-env-vector env))
+;; 			       ,@(iv-env-bindings env))
+;;        (defun-default-handler ,method-fn-name ,args ,@body)
+;;        (install-method ,method-fn-name))))
+
+;; iv instance variable?
 (defmacro internal-define-method (method-fn-name env args body)
-  "Method-fn-name is a method-function-name (i.e. a symbol nobody else knows about).
-  Env is an iv-environment. Args is the arglist.
-  Body is a list of forms.
-
-  Expands to a form that, when evaluated, defines a handler."
-  `(compiler-let ((*calling-method* ',method-fn-name)
-                  (*calling-ivs* ',(iv-env-vector env))
-                  (*called-methods* nil))
-     (lucid::symbol-macro-let ((%calling-method ',method-fn-name)
-			       (%calling-ivs ',(iv-env-vector env))
-			       ,@(iv-env-bindings env))
+  "method-fn-name is a method-function-name (i.e. a symbol nobody else
+   knows about). env is an iv-environment. args is the arglist. body
+   is a list of forms. Expands to a form that, when evaluated,
+   defines a handler."
+  `(sb-cltl2:compiler-let ((*calling-method* ',method-fn-name)
+			   (*calling-ivs* ',(iv-env-vector env))
+			   (*called-methods* nil))
+     (symbol-macrolet ((%calling-method ',method-fn-name)
+		       (%calling-ivs ',(iv-env-vector env))
+		       ,@(iv-env-bindings env))
        (defun-default-handler ,method-fn-name ,args ,@body)
        (install-method ,method-fn-name))))
 
@@ -499,14 +498,14 @@
 
 (eval-when (:execute :compile-toplevel)
 
-(defmacro iv-bound-p (name)
-  (if *calling-method*
-      `(slot-unbound-p self (svref (entry-map %entry)
-                                   ,(position name *calling-ivs*)))
-      `(slot-unbound-p self (svref (entry-map %entry)
-                                   (position ',name %calling-ivs)))))
+  (defmacro iv-bound-p (name)
+    (if *calling-method*
+	`(slot-unbound-p self (svref (entry-map %entry)
+				     ,(position name *calling-ivs*)))
+	`(slot-unbound-p self (svref (entry-map %entry)
+				     (position ',name %calling-ivs)))))
 
-)
+  )
 
 (defmacro find-method (method)
   (if *calling-method*
@@ -537,11 +536,11 @@
   `(update-method ',method ',(or *calling-ivs* '#()) ',*called-methods*))
 #|
 (defmacro method-call (method . args)
-  "Macro used inside internal-define-method, analogous to funcall.
-  Call like (method-call method-fn-name arg1 arg2...)."
-  `(let* ((slot (find-method ,method))
-          (entry (svref (entry-cmap %entry) slot)))
-     (funcall-entry self (get-message) entry ,@args)))
+"Macro used inside internal-define-method, analogous to funcall.
+Call like (method-call method-fn-name arg1 arg2...)."
+`(let* ((slot (find-method ,method))
+(entry (svref (entry-cmap %entry) slot)))
+(funcall-entry self (get-message) entry ,@args)))
 |#
 
 (defmacro method-apply (method . args)

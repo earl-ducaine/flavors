@@ -1,5 +1,5 @@
 
-(asdf:defsystem :flavor
+(asdf:defsystem :flavors
   :depends-on (:cffi :alexandria ::bordeaux-threads :closer-mop)
   :serial t
   :components

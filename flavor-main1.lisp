@@ -27,7 +27,7 @@
            (defaults (method-env-defaults env))
            (ables (method-env-ables (flavor-method-env flavor)))
            (vars nil) (initable nil) (settable nil) (gettable nil)
-           (required nil) (ordered nil) 
+           (required nil) (ordered nil)
            (options nil))
       (let ((numordered (method-env-numordered env)))
         (dotimes (i (length vec))
@@ -115,7 +115,7 @@
 	 (unless (null (car %list))
 	   (let ((,var (car %m)))
 	     ,@body))))))
-  
+
 (defmacro method-types (name structure)
   `(car (get-method-types ,name ,structure)))
 
@@ -200,7 +200,7 @@
 	       components-stack second-stack
 	       undefined-includeds)))))
   undefined-includeds)
-	
+
 
 ;;; First we do a depth-first walk of the components.
 ;;; Into this list we insert all included flavors and their not-already-present
@@ -236,7 +236,7 @@
 		      i
 		      components-stack second-stack
 		      undefined-includeds))))))
-      
+
       (unless (find-if #'(lambda (c) (not (flavor-has-vanilla-p c)))
 		       second-stack)
 	(vector-push-extend (get-flavor 'vanilla-flavor) second-stack))
@@ -255,7 +255,7 @@
 ;;; @#@# Generally the first iv to supply a default sets it?
 ;;; Ables flags (initable, settable, etc.) are ored together.
 
-             
+
 (defun calculate-instance-env (flavor)
   (with-stacks (ables-stack default-stack variables-stack)
     (setf (fill-pointer variables-stack) 0
@@ -357,17 +357,16 @@
                            res)))))
 
 |#
-;;;
+
 ;;; Defflavor
-;;;
 
-;;; %flavor-forms calculates the currently valid accessor forms (etc.?)
-;;; Later operation can figure out which ones are no longer valid.
-
-
+;;; %flavor-forms calculates the currently valid accessor forms
+;;; (etc.?)  Later operation can figure out which ones are no longer
+;;; valid.
 (defmacro defflavor (flavor-name ivs components &rest options)
   "(flavor-name iv-list component-list . options)
   Refer to the flavor documentation for details."
+  (format t "options: ~a~%" options)
   (when (and (find-class flavor-name nil)
 	     (not (flavorp flavor-name)))
     (error "Flavor name ~S is not allowed." flavor-name))
@@ -422,7 +421,7 @@
                    (setq ,var ,def))		                ;;It wasn't doing one for the
                 inits))				                ;;mixin.
 	))))
-    
+
 (defun %defflavor (flavor-name ivs components options)
   (let* ((flavor (get-flavor flavor-name t))
          (iv-list (mapcar #'(lambda (x) (if (listp x) (car x) x)) ivs))
@@ -436,16 +435,15 @@
          (changed 0)
          (abstract-p nil)
          (combinations '((internal-init :progn . :base-flavor-last)))
-         changed-methods
-         ordered required settable gettable initable
-         env required-methods required-flavors
-         default-plist init-keywords required-inits prefix
-         args)
+         changed-methods ordered required settable gettable initable
+         env required-methods required-flavors default-plist
+         init-keywords required-inits prefix args documentation)
     (dolist (opt options)
       (cond ((listp opt)
 	     (setq args (cdr opt) opt (car opt))
+	     ;; if null cdr use all ivars
 	     (when (and (not args) (member opt *var-options*))
-	       (setq args iv-list)))	;if null cdr use all ivars
+	       (setq args iv-list)))
             ((member opt *var-options*) (setq args iv-list))
             (t (setq args t)))
       (case opt
@@ -464,6 +462,7 @@
         (:init-keywords (setq init-keywords args))
         (:default-init-plist (setq default-plist args))
         (:required-init-keywords (setq required-inits args))
+	(:documentation (setq documentation args))
         (:method-combination
          (dolist (ordering args)
            (let ((combination (cons (car ordering) (cadr ordering))))
@@ -478,8 +477,8 @@
                     (eq vanilla-p (flavor-has-vanilla-p flavor))
                     (flavor-defined-p flavor) ; If we're an undefined included.
 		    (null options)
-		    ;;; fix for bug 2018.  
-		    (equal old-env-vec (method-env-vector env)) 
+		    ;;; fix for bug 2018.
+		    (equal old-env-vec (method-env-vector env))
 		    (equal old-env-defaults (method-env-defaults env))
 		    )) ;redo if options given. moe 12/17/85
       (setf (changed-components changed) t)
@@ -490,7 +489,8 @@
             (flavor-components flavor) components
             (flavor-has-vanilla-p flavor) vanilla-p)
       (dolist (c components)
-        (pushnew flavor (flavor-dependents (get-flavor c )))))	;this may need fixing
+	;; this may need fixing
+        (pushnew flavor (flavor-dependents (get-flavor c )))))
     (setf (changed-required-flavors changed)
           (not (equal required-flavors (flavor-required-flavors flavor)))
           (changed-required-methods changed)
@@ -501,34 +501,32 @@
           (not (equal init-keywords (flavor-init-keywords flavor)))
           (changed-required-inits changed)
           (not (equal required-inits (flavor-required-inits flavor))))
-
     ;; This has been done pretty lazily.
     (let* ((old-env (flavor-method-env flavor)))
       (cond ((null old-env)
 	     (setf
 	      (flavor-method-env flavor) env
-	      (flavor-instance-env flavor) (calculate-instance-env flavor)))	
+	      (flavor-instance-env flavor) (calculate-instance-env flavor)))
             ((not (equalp (iv-env-vector env) (iv-env-vector old-env)))
              (setf (changed-iv-order changed) t
                    (changed-required-ivs changed) t
                    (changed-iv-inits changed) t)
-              (setf
-	       (flavor-method-env flavor) env
-	       (flavor-instance-env flavor) (calculate-instance-env flavor)))
+	     (setf
+	      (flavor-method-env flavor) env
+	      (flavor-instance-env flavor) (calculate-instance-env flavor)))
             (t (let ((old-env-ables (method-env-ables old-env))
                      (env-ables (method-env-ables env)))
                  (dotimes (i (length env-ables))
                    (when (not (eq (ables-initable (aref env-ables i))
                                   (ables-initable (aref old-env-ables i))))
                      (setf (changed-iv-keywords changed) t)))))))
-    
+
     (dolist (c (flavor-combinations flavor))
       (when (not (member c combinations :test #'equal))
         (pushnew (car c) changed-methods)))
     (dolist (c combinations)
       (when (not (member c (flavor-combinations flavor) :test #'equal))
         (pushnew (car c) changed-methods)))
-    
     (when (and (not (flavor-abstract-p flavor))
                abstract-p
                (flavor-instantiated-p flavor)
@@ -585,16 +583,17 @@
                   (push name changed-methods))))))))
 
     (macrolet ((doit ()
-                     '(setf (flavor-changed flavor) changed
-                            (flavor-method-env flavor) env
-                            (flavor-combinations flavor) combinations
-                            (flavor-required-methods flavor) required-methods
-                            (flavor-required-flavors flavor) required-flavors
-                            (flavor-prefix flavor) prefix
-                            (flavor-default-plist flavor) default-plist
-                            (flavor-init-keywords flavor) init-keywords
-                            (flavor-required-inits flavor) required-inits
-                            (flavor-defined-p flavor) t)))
+		 '(setf (flavor-changed flavor) changed
+		   (flavor-method-env flavor) env
+		   (flavor-combinations flavor) combinations
+		   (flavor-required-methods flavor) required-methods
+		   (flavor-required-flavors flavor) required-flavors
+		   (flavor-prefix flavor) prefix
+		   (flavor-default-plist flavor) default-plist
+		   (flavor-init-keywords flavor) init-keywords
+		   (flavor-required-inits flavor) required-inits
+		   (flavor-documentation flavor) documentation
+		   (flavor-defined-p flavor) t)))
       (cond ((not (and (zerop changed) (null changed-methods)))
              (with-stacks (affected)
                (do-inheriting-flavors (i flavor affected)
@@ -607,7 +606,7 @@
                  (dotimes (i (length ordered))
                    (cleanup-flavor (aref ordered i))))))
             (t (doit)))
-      (unless (member (flavor-name flavor)  *all-flavor-names*)	;prevent duplicates
+      ;; prevent duplicates
+      (unless (member (flavor-name flavor)  *all-flavor-names*)
 	(push (flavor-name flavor) *all-flavor-names*))
       (deletef (flavor-name flavor) *undefined-flavor-names*))))
-

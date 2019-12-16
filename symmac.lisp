@@ -1,16 +1,14 @@
 ;;; -*- Package: LUCID; Base: 10; Mode: LISP; Syntax: Common-lisp -*-
-;;; ***************************************************************************
 ;;;
 ;;;        Copyright (C) 1985 by Lucid Inc.,  All Rights Reserved
 ;;;
-;;; ***************************************************************************
 
-(in-package "LUCID")
+(in-package :lucid)
 
 
 ;;; Symbol macros are akin to labels or macrolet; the code for a
-;;; replacement is in the same environment that the original symbol was
-;;; in (including the symbol macros).  This is mostly because it's
+;;; replacement is in the same environment that the original symbol
+;;; was in (including the symbol macros). This is mostly because it's
 ;;; easier to implement.
 ;;;
 ;;; Newer version to deal with environments correctly.  Since there's no
@@ -20,7 +18,7 @@
 ;;; symbol-macro-let macro return somthing containing an internal macro
 ;;; that gets the environment where it appears and then deals with its
 ;;; body using that information.
-;;;
+
 
 (defvar *symbol-macro-environment* nil
   "Used to pass the expansion environment to the transforms.")
@@ -60,10 +58,7 @@
 
 )
 
-;;;
 ;;; The macro itself.
-;;;
-
 (defmacro symbol-macro-let (bindings &rest body
 			    &environment *symbol-macro-environment*)
   (let ((*symbol-macro-replacements* *symbol-macro-replacements*))
@@ -72,7 +67,7 @@
     `(progn ,@(mapcar #'symmac-replace body))))
 
 
-;;; 
+;;;
 ;;; Replacement functions.
 ;;;
 
@@ -84,6 +79,13 @@
 ;;;
 
 (defvar *sym-mac-transforms* (make-hash-table))
+
+(eval-when (:execute :load-toplevel :compile-toplevel)
+  (defun special-form-p (form)
+    (format t "special-form-p: ~a" form)
+    (and (symbolp form)
+	 (symbol-function form)
+	 (eq (symbol-package form) (find-package :cl)))))
 
 (defun symmac-replace (form)
   (prog (temp)
@@ -159,7 +161,7 @@
                                             (if (not (null (cddr car)))
                                                 (symmac-lambda-bind-var
                                                  (caddr car)))))
-                                   (symmac-lambda-bind-var (car car))))) 
+                                   (symmac-lambda-bind-var (car car)))))
                    (&key (symmac-lambda-bind-var car)
                          (push car newlist))
                    (&allow-other-keys
@@ -188,30 +190,25 @@
                    )))))))
 
 
-;;;
 ;;; The transforms.
-;;;
 
-;;; Can take a raw function, which gets applied to the form to be transformed.
-;;; If it changes the environment, it should bind *symbol-macro-replacements*.
-
+;;; Can take a raw function, which gets applied to the form to be
+;;; transformed.  If it changes the environment, it should bind
+;;; *symbol-macro-replacements*.
 (eval-when (:execute :compile-toplevel)
-
-(defmacro defsymtrans (special-form args-or-function &body body)
-  (let* ((dummy-name (make-symbol (symbol-name special-form)))
-	 (fn (if body
-		 (prog1
-		   `(defun ,dummy-name ,args-or-function
-		      (let ((*symbol-macro-replacements*
-			      *symbol-macro-replacements*))
-			,@body))
-		   (setq args-or-function `#',dummy-name))
-		 `())))
-    `(progn ,fn
-	    (setf (gethash ',special-form *sym-mac-transforms*)
-		  ,args-or-function))))
-
-)
+  (defmacro defsymtrans (special-form args-or-function &body body)
+    (let* ((dummy-name (make-symbol (symbol-name special-form)))
+	   (fn (if body
+		   (prog1
+		       `(defun ,dummy-name ,args-or-function
+			  (let ((*symbol-macro-replacements*
+				 *symbol-macro-replacements*))
+			    ,@body))
+		     (setq args-or-function `#',dummy-name))
+		   `())))
+      `(progn ,fn
+	      (setf (gethash ',special-form *sym-mac-transforms*)
+		    ,args-or-function)))))
 
 (defun symmac-leave-first-arg (form)
   (list* (car form) (cadr form)
@@ -236,7 +233,7 @@
 		    unwind-protect when))
   (setf (gethash name *sym-mac-transforms*)
 	#'symmac-progn-like))
-	    
+
 (defsymtrans function (form)
   (let ((lambdap (cadr form)))
     (cond ((symbolp lambdap) form)
@@ -315,7 +312,7 @@
 		       bindings
 		       (nreverse reinits)))) ; [r 3Dec85 added nreverse]
 	`(,operator ,bindings-with-reinits ,@final ,@body)))))
-	    
+
 
 (defsymtrans let #'symmac-replace-binding-body)
 (defsymtrans do #'symmac-replace-binding-body)
@@ -375,6 +372,20 @@
 (defsymtrans flet #'symmac-flet-labels-macrolet)
 (defsymtrans labels #'symmac-flet-labels-macrolet)
 (defsymtrans macrolet #'symmac-flet-labels-macrolet)
+
+(eval-when (:load-toplevel :compile-toplevel :execute)
+  (defun compiler-let (expression env-shape lcode)
+    (destructuring-bind (bindings . body) (rest expression)
+      (let ((names (mapcar #'(lambda (x)
+			       (if (consp x) (car x) x))
+			   bindings))
+	    (vals (mapcar #'(lambda (x)
+			      (if (consp x) (second x) nil))
+			  bindings)))
+	(progv names (mapcar #'eval vals)
+	  (lcompile-internal `(progv ',names (list ,@vals) ,@body)
+			     env-shape
+			     lcode))))))
 
 (defsymtrans compiler-let (form)
   (destructuring-bind (bindings . body) (rest form)

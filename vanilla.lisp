@@ -1,16 +1,14 @@
-;;; -*- Mode: LISP; Syntax: Common-lisp; Base: 10; Package: FLAVORS -*-
-;;; ***************************************************************************
+
 ;;;
 ;;;        Copyright (C) 1985 by Lucid Inc.,  All Rights Reserved
 ;;;
-;;; ***************************************************************************
-;;;
+
 
 (in-package :flavors)
 
 (defmacro case-construct-methods (function-names function-methods)
   ;;; function-names=primary=(flavor-name-key-primary1
-  ;;; flavor-name-key-primary2..) , function-methods= 
+  ;;; flavor-name-key-primary2..) , function-methods=
   ;;; ((METHOD-APPLY flavor-name-key-PRIMARY1 %COMBINED-ARGS)
   ;;;  (METHOD-APPLY flavor-name-key-PRIMARY2 %COMBINED-ARGS)...)
   `(let ((construct nil)
@@ -47,7 +45,8 @@
      (order-methods :base-flavor-last 'befores '(:before))
      (order-methods :base-flavor-first 'afters '(:after)))
     (:base-flavor-first
-     (order-methods :base-flavor-last 'befores '(:before))	;changed my moe 11/12/85
+     ;; changed my moe 11/12/85
+     (order-methods :base-flavor-last 'befores '(:before))
      (order-methods :base-flavor-first 'afters '(:after)))
     (t (error "Unknown ordering ~S." order))))
 
@@ -96,8 +95,8 @@
   (let ((primary (or (method-list 'primary) (method-list 'default))))
     (wrapper-mix 'wrappers
                  (cond
-		   ((null primary)		
-		    ())	
+		   ((null primary)
+		    ())
 		   (t `(progn ,@(call-methods 'befores)
 			      (multiple-value-prog1
 				(and ,@(call-methods primary))
@@ -107,8 +106,8 @@
   (let ((primary (or (method-list 'primary) (method-list 'default))))
     (wrapper-mix 'wrappers
                  (cond
-		   ((null primary)		
-		    ())	
+		   ((null primary)
+		    ())
 		   (t `(progn ,@(call-methods 'befores)
 			      (multiple-value-prog1
 				(or ,@(call-methods primary))
@@ -118,8 +117,8 @@
   (let ((primary (or (method-list 'primary) (method-list 'default))))
     (wrapper-mix 'wrappers
                  (cond
-		   ((null primary)		
-		    ())	
+		   ((null primary)
+		    ())
 		   (t `(progn ,@(call-methods 'befores)
 			      (multiple-value-prog1
 				(list ,@(call-methods primary))
@@ -129,8 +128,8 @@
   (let ((primary (or (method-list 'primary) (method-list 'default))))
     (wrapper-mix 'wrappers
                  (cond
-		   ((null primary)		
-		    ())	
+		   ((null primary)
+		    ())
 		   (t `(progn ,@(call-methods 'befores)
 			      (multiple-value-prog1
 				(append ,@(call-methods primary))
@@ -140,8 +139,8 @@
   (let ((primary (or (method-list 'primary) (method-list 'default))))
     (wrapper-mix 'wrappers
                  (cond
-		   ((null primary)		
-		    ())	
+		   ((null primary)
+		    ())
 		   (t `(progn ,@(call-methods 'befores)
 			      (multiple-value-prog1
 				(nconc ,@(call-methods primary))
@@ -151,7 +150,7 @@
   (let ((primary (or (method-list 'primary) (method-list 'default))))
     (wrapper-mix 'wrappers
                  (cond
-		   ((null primary)		
+		   ((null primary)
 		    (progn (format t "~% warning:no primary methods found")
 			   nil))
 		   (t `(progn ,@(call-methods 'befores)
