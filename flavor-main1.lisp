@@ -372,7 +372,7 @@
     (error "Flavor name ~S is not allowed." flavor-name))
   (%defflavor flavor-name ivs components options)
   `(progn
-     (eval-when (:execute compile load)
+     (eval-when (:execute :compile-toplevel :load-toplevel)
             (%defflavor ',flavor-name ',ivs ',components ',options))
           ,.(%flavor-forms flavor-name)
           ',flavor-name))

@@ -1,6 +1,7 @@
 
 (asdf:defsystem :flavors
-  :depends-on (:cffi :alexandria ::bordeaux-threads :closer-mop)
+  :depends-on (:cffi :alexandria ::bordeaux-threads :closer-mop
+		     :zeta-lisp-compatability)
   :serial t
   :components
   ((:file "package")

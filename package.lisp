@@ -15,7 +15,7 @@
 	   :compiler-let))
 
 (defpackage :flavors
-  (:use :cl)
+  (:use :cl :system)
   (:nicknames :flavor-internals)
   (:import-from :lucid :string-append :symbol-macro-let :compiler-let)
   (:shadow :defmethod

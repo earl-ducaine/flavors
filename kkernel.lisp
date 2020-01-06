@@ -29,14 +29,18 @@
        (setf (lucid::structure-ref array (1+ i) '%instance) ,initial-element))
       array)))
 
+(defun slot-value (instance slot &optional type)
+  (if type
+      (error "slot-value not yet supported for flavors (i know)")
+      (cl:slot-value instance slot)))
 
 (defmacro %instance-ref (instance slot)
-  `(slot-value ,instance ,slot '%instance))	
+  `(slot-value ,instance ,slot '%instance))
 
 (defmacro instance-descriptor (instance)
   ;; moe 1/11/86
-  `(%instance-ref ,instance 0))			
-  
+  `(%instance-ref ,instance 0))
+
 (defmacro slot-unbound-p (instance slot)
 ;  "Follows 'forwarding pointers'."       translate->add one to slot
   `(let ((thing (%instance-ref ,instance (1+ ,slot))))	;moe 1/11/86

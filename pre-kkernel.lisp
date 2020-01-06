@@ -6,12 +6,6 @@
 (defun send (instance message &rest args)
   (apply 'flavor-send instance message args))
 
-(defun memq (x y) 
-  (loop 
-     (cond ((atom y) (return nil))
-	   ((eq x (car y)) (return y)))
-     (pop y)))
-
 (defmacro do-place-spec ((key val place) &body body)
   ;; Iterate over all keyword-value specs in PLACE
   (let ((it-var (gensym)))
@@ -85,15 +79,15 @@
 	  (string-append "MAKE-" advised-function "-" name "-ADVICE")))
 	(cont-sym (gensym)))
     ;; Find out decls, bind for possible macroexpand
-    (multiple-value-bind (body-forms declares doc) 
-	(let ((.advice-continuation. cont-sym)) 
+    (multiple-value-bind (body-forms declares doc)
+	(let ((.advice-continuation. cont-sym))
 	  (parse-body body env t))
       `(progn
 	 (defun ,advisor-name (,cont-sym)
 	   #'(lambda ,arglist
 	       ,@(if doc (list doc))
 	       ;; Declarations before compiler-let
-	       ,@declares		
+	       ,@declares
 	       (compiler-let ((.advice-continuation. ',cont-sym))
 		 ;; Let code know how to continue it
 		 ,@body-forms)))
@@ -108,14 +102,14 @@
   (check-type advised-function symbol)
   (let ((cont-sym (gensym)))
     ;; Find out decls, bind for possible macroexpand
-    (multiple-value-bind (body-forms declares doc) 
+    (multiple-value-bind (body-forms declares doc)
 	(parse-body body env t)
       `(sb-ext::encapsulate
 	',advised-function ',name
 	(lambda ,(cons 'function arglist)
 	  ,@(if doc (list doc))
 	  ;; Declarations before compiler-let
-	  ,@declares		
+	  ,@declares
 	    ;; Let code know how to continue it
 	    ,@body-forms)))))
 
