@@ -1,48 +1,48 @@
-;; (c) Copywrite 1983, Massachusetts Institute of Technology
-(setq rcs-flavorm-
-   "$Header: flavorm.l,v 1.2 85/03/24 11:25:34 sklower Exp $")
 
+
+;; (c) Copywrite 1983, Massachusetts Institute of Technology
+;;
 ;; This file contains some of the support macros that are need by the
 ;; flavor system.
 
-(environment-maclisp)
-(declare (macros t))
+(in-package :mit-flavors)
 
-; The data-structure on the FLAVOR property of a flavor-name
-(DEFSTRUCT (FLAVOR :NAMED)
-  FLAVOR-BINDINGS		;List of locatives to instance variable
+
+;; The data-structure on the FLAVOR property of a flavor-name
+(defstruct (flavor :named)
+  flavor-bindings		;List of locatives to instance variable
 				; internal value cells.  MUST BE CDR-CODED!!
 				;Fixnums can also appear.  They say to skip
 				;whatever number of instance variable slots.
-  FLAVOR-METHOD-HASH-TABLE	;The hash table for methods of this flavor.
+  flavor-method-hash-table	;The hash table for methods of this flavor.
 				; NIL means method-combination not composed yet.
-  FLAVOR-NAME			;Symbol which is the name of the flavor.
+  flavor-name			;Symbol which is the name of the flavor.
 				; This is returned by TYPEP.
-  FLAVOR-LOCAL-INSTANCE-VARIABLES	;Names and initializations,
+  flavor-local-instance-variables	;Names and initializations,
 					; does not include inherited ones.
-  FLAVOR-ALL-INSTANCE-VARIABLES	;Just names, only valid when "flavor
+  flavor-all-instance-variables	;Just names, only valid when "flavor
 				; combination" composed.  Corresponds directly
 				; to FLAVOR-BINDINGS and the instances.
-  FLAVOR-METHOD-TABLE		;Defined below.
+  flavor-method-table		;Defined below.
   ;; End of locations depended on in many other files.
-  FLAVOR-DEPENDS-ON		;List of names of flavors incorporated into this flavor.
-  FLAVOR-DEPENDED-ON-BY		;List of names of flavors which incorporate this one.
+  flavor-depends-on		;List of names of flavors incorporated into this flavor.
+  flavor-depended-on-by		;List of names of flavors which incorporate this one.
 				;The above are only immediate dependencies.
-  FLAVOR-INCLUDES		;List of names of flavors to include at the end
+  flavor-includes		;List of names of flavors to include at the end
 				; rather than as immediate depends-on's.
-  FLAVOR-DEPENDS-ON-ALL		;Names of all flavors depended on, to all levels, including
+  flavor-depends-on-all		;Names of all flavors depended on, to all levels, including
 				; this flavor itself.  NIL means flavor-combination not
 				; composed yet.  This is used by TYPEP of 2 arguments.
-  (FLAVOR-WHICH-OPERATIONS NIL)	;List of operations handled, created when needed.
+  (flavor-which-operations nil)	;List of operations handled, created when needed.
 				; This is NIL if it has not been computed yet.
   ;; Redundant copy of :DEFAULT-HANDLER property, for speed in calling it.
-  (FLAVOR-DEFAULT-HANDLER NIL)
-  (FLAVOR-GETTABLE-INSTANCE-VARIABLES NIL)
-  (FLAVOR-SETTABLE-INSTANCE-VARIABLES NIL)
-  (FLAVOR-INITABLE-INSTANCE-VARIABLES NIL)
+  (flavor-default-handler nil)
+  (flavor-gettable-instance-variables nil)
+  (flavor-settable-instance-variables nil)
+  (flavor-initable-instance-variables nil)
 				;Alist from init keyword to name of variable
-  (FLAVOR-INIT-KEYWORDS NIL)			;option
-  (FLAVOR-PLIST NIL)		;Esoteric things stored here as properties
+  (flavor-init-keywords nil)			;option
+  (flavor-plist nil)		;Esoteric things stored here as properties
 				;Known: :ORDERED-INSTANCE-VARIABLES, :DEFAULT-HANDLER
 				; :OUTSIDE-ACCESSIBLE-INSTANCE-VARIABLES, :ACCESSOR-PREFIX,
 				; :REQUIRED-INSTANCE-VARIABLES, :REQUIRED-METHODS,
@@ -64,8 +64,11 @@
 				;flavor system does all its handling of them during the
 				;expansion of the DEFFLAVOR macro.
   )
-
-(defsubst instancep (x)
+
+;; Todo -- ed -- This part of the flavor system will need to be
+;; converted to modern CL closures once it's clear what the logic is,
+;; namely the call to, fclosure-function and fclosurep.
+(defun instancep (x)
   (and (fclosurep x) (eq (fclosure-function x) #'flavor-dispatch)))
 
 (defvar self ()
@@ -88,6 +91,7 @@
   `(funcall (or (gethash ,message (flavor-method-hash-table .own-flavor.))
 		(flavor-default-handler .own-flavor.))
 	    ,message . ,args))
+
 (defmacro funcall-self (&rest args) `(send-self . ,args))
 
 (defmacro lexpr-send-self (message &rest args)
@@ -95,17 +99,36 @@
 			       (flavor-method-hash-table .own-flavor.))
 		      (flavor-default-handler .own-flavor.))
 		  ,message . ,args))
+
 (defmacro lexpr-funcall-self (&rest args) `(lexpr-send-self . ,args))
 
-(defsetf send (e v)
-  (if (or (atom (caddr e))
-	  (neq (car (caddr e)) 'quote))
-      (ferror () "Don't know how to setf this ~S" e))
-  (cond ((eq (cadr (caddr e)) ':get)
-	 `(send ,(cadr e) ':putprop ,v ,(cadddr e)))
-	(t
-	 `(send ,(cadr e) ',(intern (format () ":set-~A"
-					    (remove-colon (cadr (caddr e)))))
-			  ,v))))
+(defun neq (value-1 value-2)
+  (not (eq value-1 value-2)))
 
-(putprop 'flavorm t 'version)
+;; i.e. convent from keyword to symbol
+(defun remove-colon (symbol)
+  (if (symbolp symbol)
+      (intern (symbol-name symbol))
+      (error "remove-colon now only works on symbols, not names of symbols")))
+
+(defun (setf send) (value expression)
+  (if (or (atom (caddr expression))
+	  (neq (car (caddr expression)) 'quote))
+      (error "Don't know how to setf this ~S" expression))
+  (cond ((eq (cadr (caddr expression)) ':get)
+	 `(send ,(cadr expression) ':putprop ,value ,(cadddr expression)))
+	(t
+	 `(send ,(cadr expression)
+		',(intern (format () ":set-~A"
+				  (remove-colon (cadr (caddr expression)))))
+		,value))))
+
+
+(defmacro defprop (symbol value property)
+  "make the value of symbol's property property be value."
+  `(progn
+     (setf (get ',symbol ',property) ',value)
+     ',symbol))
+
+
+;; (putprop 'flavorm t 'version)

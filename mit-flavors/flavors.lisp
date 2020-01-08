@@ -2,180 +2,178 @@
 
 ;; (c) copywrite 1982, Massachusetts Institute of Technology
 
-;; This flavor system is derived from the original Lisp machine
-;; flavor system.  As such its distribution may be restricted to
-;; Lisp machine software license holders.
+;; This flavor system is derived from the original Lisp machine flavor
+;; system.  As such its distribution may be restricted to Lisp machine
+;; software license holders.
 
-(environment-lmlisp (eval compile load) (files flavorm))
 
-(setq |SCCS-flavors| "@(#) flavors.l	1.1	83/03/14 @(#)")
+;;; A flavor-name is a symbol which names a type of objects defined by
+;;; the combination of several flavors. The flavor property is a
+;;; data-structure (of type FLAVOR) defining the nature of the flavor,
+;;; as defined below.
+;;;
+;;; Flavors come in essentially three kinds.  The first kind defines a
+;;; class of flavors, and provides the basic instance variables and
+;;; methods for that class. This kind typically includes only
+;;; vanilla-flavor as a component, and uses the
+;;; :required-instance-variables and :required-methods options. The
+;;; second kind of flavor represents a particular option that may be
+;;; combined in (a "mix-in"). The third kind of flavor is the kind
+;;; that can usefully be instantiated; it is a combination of one of
+;;; the first kind and several of the second kind, to achieve the
+;;; behavior desired for a particular application.
+;;;
+;;; The following symbols are interesting to outsiders:
+;;; defflavor - macro for defining a flavor
+;;; defmethod - macro for defining a method
+;;; defwrapper - macro for defining a flavor-wrapper
+;;; instantiate-flavor - create an object of a specified flavor
+;;; make-instance - easier to call version of INSTANTIATE-FLAVOR
+;;; compile-flavor-methods - macro which does the right thing in the compiler
+;;; recompile-flavor - function to recompile a flavor and maybe any flavors
+;;;		that depend on it.  Usually this happens automatically.
+;;; funcall-self - a macro which, assuming you are a flavor instance, will
+;;;		call yourself without bothering about rebinding the
+;;;		variables.  Will do something totally random if SELF
+;;;		isn't a flavor instance.
+;;; lexpr-funcall-self - LEXPR-FUNCALL version of above
+;;; *all-flavor-names* - list of all symbols which have been used as the
+;;;		name of a flavor
+;;; *flavor-compilations* - list of all methods which had to be compiled
+;;;		this is useful for finding flavors which weren't compiled
+;;;		in qfasl files or which need to be recompiled to bring
+;;;		them up to date.
+;;; *flavor-compile-trace* - if non-NIL, a FORMAT destination for messages about
+;;;		recompilation of combined methods
+;;; flavor-allows-init-keyword-p - determine whether a certain flavor allows
+;;;		a certain keyword in its init-plist.
+;;; flavor-allowed-init-keywords - returns all the init keywords a flavor
+;;;		handles.
+;;;
+;;; roads not taken:
+;;;  - changing the size of all extant instances of a flavor.
+;;;  - nothing to stop you from instantiating a flavor of the first or
+;;;    second kind. in practice you will usually get an error if you
+;;;    try it.
 
-(DECLARE (SPECIAL ERRPORT)
-	 (MACROS T))
+(in-package :mit-flavors)
 
-; A flavor-name is a symbol which names a type of objects defined
-; by the combination of several flavors.  The SI:FLAVOR
-; property is a data-structure (of type FLAVOR) defining the
-; nature of the flavor, as defined below.
-
-; Flavors come in essentially three kinds.  The first kind defines a class
-; of flavors, and provides the basic instance variables and methods for
-; that class.  This kind typically includes only VANILLA-FLAVOR as a
-; component, and uses the :REQUIRED-INSTANCE-VARIABLES and
-; :REQUIRED-METHODS options.  The second kind of flavor represents a
-; particular option that may be combined in (a "mix-in").  The third
-; kind of flavor is the kind that can usefully be instantiated; it is
-; a combination of one of the first kind and several of the second kind,
-; to achieve the behavior desired for a particular application.
-
-; The following symbols are interesting to outsiders:
-; DEFFLAVOR - macro for defining a flavor
-; DEFMETHOD - macro for defining a method
-; DEFWRAPPER - macro for defining a flavor-wrapper
-; INSTANTIATE-FLAVOR - create an object of a specified flavor
-; MAKE-INSTANCE - easier to call version of INSTANTIATE-FLAVOR
-; COMPILE-FLAVOR-METHODS - macro which does the right thing in the compiler
-; RECOMPILE-FLAVOR - function to recompile a flavor and maybe any flavors
-;		that depend on it.  Usually this happens automatically.
-; FUNCALL-SELF - a macro which, assuming you are a flavor instance, will
-;		call yourself without bothering about rebinding the
-;		variables.  Will do something totally random if SELF
-;		isn't a flavor instance.
-; LEXPR-FUNCALL-SELF - LEXPR-FUNCALL version of above
-; *ALL-FLAVOR-NAMES* - list of all symbols which have been used as the
-;		name of a flavor
-; *FLAVOR-COMPILATIONS* - list of all methods which had to be compiled
-;		this is useful for finding flavors which weren't compiled
-;		in qfasl files or which need to be recompiled to bring
-;		them up to date.
-; *FLAVOR-COMPILE-TRACE* - if non-NIL, a FORMAT destination for messages about
-;		recompilation of combined methods
-; FLAVOR-ALLOWS-INIT-KEYWORD-P - determine whether a certain flavor allows
-;		a certain keyword in its init-plist.
-; FLAVOR-ALLOWED-INIT-KEYWORDS - returns all the init keywords a flavor
-;		handles.
-
-; Roads not taken:
-;  o Changing the size of all extant instances of a flavor.
-;  o Nothing to stop you from instantiating a flavor of the first or
-;    second kind.  In practice you will usually get an error if you try it.
-
-; This macro is used to define a flavor.  Use DEFMETHOD to define
-; methods (responses to messages sent to an instance of a flavor.)
-(DEFMACRO DEFFLAVOR (NAME INSTANCE-VARIABLES COMPONENT-FLAVORS &REST OPTIONS)
-  ;INSTANCE-VARIABLES can be symbols, or lists of symbol and initialization.
-  ;COMPONENT-FLAVORS are searched from left to right for methods,
-  ; and contribute their instance variables.
-  ;OPTIONS are:
-  ; (:GETTABLE-INSTANCE-VARIABLES v1 v2...) - enables automatic generation of methods
-  ;   for retrieving the values of those instance variables
-  ; :GETTABLE-INSTANCE-VARIABLES - (the atomic form) does it for all instance
-  ;   variables local to this flavor (declared in this DEFFLAVOR).
-  ; (:SETTABLE-INSTANCE-VARIABLES v1 v2...) - enables automatic generation of methods
-  ;   for changing the values of instance variables
-  ;   The atomic form works too.
-  ; (:REQUIRED-INSTANCE-VARIABLES v1 v2...) - any flavor incorporating this
-  ;   flavor and actually instantiated must have instance variables with
-  ;   the specified names.  This is used for defining general types of
-  ;   flavors.
-  ; (:REQUIRED-METHODS m1 m2...) - any flavor incorporating this
-  ;   flavor and actually instantiated must have methods for the specified
-  ;   operations.  This is used for defining general types of flavors.
-  ; (:REQUIRED-FLAVORS f1 f2...) - similar,  for component flavors
-  ;   rather than methods.
-  ; (:INITABLE-INSTANCE-VARIABLES v1 v2...) - these instance variables
-  ;   may be initialized via the options to INSTANTIATE-FLAVOR.
-  ;   The atomic form works too.
-  ;   Settable instance variables are also INITABLE.
-  ; (:INIT-KEYWORDS k1 k2...) - specifies keywords for the :INIT operation
-  ;   which are legal to give to this flavor.  Just used for error checking.
-  ; (:DEFAULT-INIT-PLIST k1 v1 k2 v2...) - specifies defaults to be put
-  ;   into the init-plist, if the keywords k1, k2, ... are not already
-  ;   specified, when instantiating.  The values v1, v2, ... get evaluated
-  ;   when and if they are used.
-  ; (:DEFAULT-HANDLER function) - causes function to be called if a message
-  ;   is sent for which there is no method.  Defaults to a function which
-  ;   gives an error.
-  ; (:INCLUDED-FLAVORS f1 f2...) - specifies flavors to be included in this
-  ;   flavor.  The difference between this and specifying them as components
-  ;   is that included flavors go at the end, so they act as defaults.  This
-  ;   makes a difference when this flavor is depended on by other flavors.
-  ; :NO-VANILLA-FLAVOR - do not include VANILLA-FLAVOR.
-  ;   Normally it is included automatically.  This is for esoteric hacks.
-  ; (:ORDERED-INSTANCE-VARIABLES v1 v2...) - requires that in any instance,
-  ;   instance variables with these names must exist and come first.  This might
-  ;   be for instance variable slots specially referenced by microcode.
-  ;   The atomic form works too.
-  ; (:OUTSIDE-ACCESSIBLE-INSTANCE-VARIABLES v1 v2...) - defines defsubsts which
-  ;   act like defstruct accessors for the variables; that is, using these with
-  ;   an argument of an instance gets the value of that variable in that instance.
-  ;   The name of the defsubst is the flavor-name, hyphen, the variable name.
-  ;   If the instance variable is ordered, the accessor will know its index
-  ;   in the instance and access it directly, otherwise it will call
-  ;   SYMEVAL-IN-CLOSURE at run-time.
-  ;   The atomic form works too.
-  ; (:ACCESSOR-PREFIX sym) - uses "sym" as the prefix on the names of the above
-  ;   defsubsts instead of "flavor-".
-  ; (:SELECT-METHOD-ORDER m1 m2...) - specifies that the keywords m1, m2, ... are
-  ;   are important and should have their methods first in the select-method
-  ;   table for increased efficiency.
-  ; (:METHOD-COMBINATION (type order operation1 operation2...)...)
-  ;   Specify ways of combining methods from different flavors.  :DAEMON NIL is the
-  ;   the default.  order is usually :BASE-FLAVOR-FIRST or :BASE-FLAVOR-LAST,
-  ;   but this depends on type.
-  ; (:DOCUMENTATION <args>...)
-  ;   The list of args is simply put on the flavor's :DOCUMENTATION property.
-  ;   The standard for this is that the arguments may include keyword symbols and
-  ;   a documentation string.  To be specified more later.
-  ; There may be more.
+;;; this macro is used to define a flavor.  Use defmethod to define
+;;; methods (responses to messages sent to an instance of a flavor.)
+(defmacro defflavor (name instance-variables component-flavors &rest options)
+  ;;INSTANCE-VARIABLES can be symbols, or lists of symbol and initialization.
+  ;;COMPONENT-FLAVORS are searched from left to right for methods,
+  ;; and contribute their instance variables.
+  ;;OPTIONS are:
+  ;; (:GETTABLE-INSTANCE-VARIABLES v1 v2...) - enables automatic generation of methods
+  ;;   for retrieving the values of those instance variables
+  ;; :GETTABLE-INSTANCE-VARIABLES - (the atomic form) does it for all instance
+  ;;   variables local to this flavor (declared in this DEFFLAVOR).
+  ;; (:SETTABLE-INSTANCE-VARIABLES v1 v2...) - enables automatic generation of methods
+  ;;   for changing the values of instance variables
+  ;;   The atomic form works too.
+  ;; (:REQUIRED-INSTANCE-VARIABLES v1 v2...) - any flavor incorporating this
+  ;;   flavor and actually instantiated must have instance variables with
+  ;;   the specified names.  This is used for defining general types of
+  ;;   flavors.
+  ;; (:REQUIRED-METHODS m1 m2...) - any flavor incorporating this
+  ;;   flavor and actually instantiated must have methods for the specified
+  ;;   operations.  This is used for defining general types of flavors.
+  ;; (:REQUIRED-FLAVORS f1 f2...) - similar,  for component flavors
+  ;;   rather than methods.
+  ;; (:INITABLE-INSTANCE-VARIABLES v1 v2...) - these instance variables
+  ;;   may be initialized via the options to INSTANTIATE-FLAVOR.
+  ;;   The atomic form works too.
+  ;;   Settable instance variables are also INITABLE.
+  ;; (:INIT-KEYWORDS k1 k2...) - specifies keywords for the :INIT operation
+  ;;   which are legal to give to this flavor.  Just used for error checking.
+  ;; (:DEFAULT-INIT-PLIST k1 v1 k2 v2...) - specifies defaults to be put
+  ;;   into the init-plist, if the keywords k1, k2, ... are not already
+  ;;   specified, when instantiating.  The values v1, v2, ... get evaluated
+  ;;   when and if they are used.
+  ;; (:DEFAULT-HANDLER function) - causes function to be called if a message
+  ;;   is sent for which there is no method.  Defaults to a function which
+  ;;   gives an error.
+  ;; (:INCLUDED-FLAVORS f1 f2...) - specifies flavors to be included in this
+  ;;   flavor.  The difference between this and specifying them as components
+  ;;   is that included flavors go at the end, so they act as defaults.  This
+  ;;   makes a difference when this flavor is depended on by other flavors.
+  ;; :NO-VANILLA-FLAVOR - do not include VANILLA-FLAVOR.
+  ;;   Normally it is included automatically.  This is for esoteric hacks.
+  ;; (:ORDERED-INSTANCE-VARIABLES v1 v2...) - requires that in any instance,
+  ;;   instance variables with these names must exist and come first.  This might
+  ;;   be for instance variable slots specially referenced by microcode.
+  ;;   The atomic form works too.
+  ;; (:OUTSIDE-ACCESSIBLE-INSTANCE-VARIABLES v1 v2...) - defines defuns which
+  ;;   act like defstruct accessors for the variables; that is, using these with
+  ;;   an argument of an instance gets the value of that variable in that instance.
+  ;;   The name of the defun is the flavor-name, hyphen, the variable name.
+  ;;   If the instance variable is ordered, the accessor will know its index
+  ;;   in the instance and access it directly, otherwise it will call
+  ;;   SYMEVAL-IN-CLOSURE at run-time.
+  ;;   The atomic form works too.
+  ;; (:ACCESSOR-PREFIX sym) - uses "sym" as the prefix on the names of the above
+  ;;   defuns instead of "flavor-".
+  ;; (:SELECT-METHOD-ORDER m1 m2...) - specifies that the keywords m1, m2, ... are
+  ;;   are important and should have their methods first in the select-method
+  ;;   table for increased efficiency.
+  ;; (:METHOD-COMBINATION (type order operation1 operation2...)...)
+  ;;   Specify ways of combining methods from different flavors.  :DAEMON NIL is the
+  ;;   the default.  order is usually :BASE-FLAVOR-FIRST or :BASE-FLAVOR-LAST,
+  ;;   but this depends on type.
+  ;; (:DOCUMENTATION <args>...)
+  ;;   The list of args is simply put on the flavor's :DOCUMENTATION property.
+  ;;   The standard for this is that the arguments may include keyword symbols and
+  ;;   a documentation string.  To be specified more later.
+  ;; There may be more.
   (LET ((COPIED-OPTIONS (COPYLIST OPTIONS)))
     (DEFFLAVOR1 NAME INSTANCE-VARIABLES COMPONENT-FLAVORS COPIED-OPTIONS)
     ;; The following is done to determine all the instance variables
     ;; that need to be declared special.
     (IF (NOT (NULL (GETD 'LISZT)))
 	(COMPOSE-FLAVOR-COMBINATION (GET-FLAVOR NAME)))
-   `(PROGN 'COMPILE
-     ;; Define flavor at load time.
-     ;; Must come before the compile-time COMPOSE-AUTOMATIC-METHODS,
-     ;; which puts methods in the QFASL file.
-     (EVAL-WHEN (LOAD)
-       (DEFFLAVOR1 ',NAME ',INSTANCE-VARIABLES ',COMPONENT-FLAVORS
-		   ',COPIED-OPTIONS))
-     ,@(COMPOSE-AUTOMATIC-METHODS (GET NAME 'FLAVOR))
-;; Make any instance-variable accessor macros.
-     ,@(DO ((VS (DO ((OPTS OPTIONS (CDR OPTS)))
-		    ((NULL OPTS) NIL)
-		  (AND (LISTP (CAR OPTS))
-		       (EQ (CAAR OPTS) ':OUTSIDE-ACCESSIBLE-INSTANCE-VARIABLES)
-		       (RETURN (CDAR OPTS)))
-		  (AND (EQ (CAR OPTS) ':OUTSIDE-ACCESSIBLE-INSTANCE-VARIABLES)
-		       (RETURN (MAPCAR #'(LAMBDA (X) (IF (ATOM X) X (CAR X)))
-				       INSTANCE-VARIABLES))))
-		(CDR VS))
-	    (PREFIX (OR (CADR (ASSQ ':ACCESSOR-PREFIX OPTIONS))
-			(CONCAT NAME "-")))
-	    (ORDS (DO ((OPTS OPTIONS (CDR OPTS)))
-		      ((NULL OPTS) NIL)
-		    (AND (LISTP (CAR OPTS))
-			 (EQ (CAAR OPTS) ':ORDERED-INSTANCE-VARIABLES)
-			 (RETURN (CDAR OPTS)))
-		    (AND (EQ (CAR OPTS) ':ORDERED-INSTANCE-VARIABLES)
-			 (RETURN (MAPCAR #'(LAMBDA (X) (IF (ATOM X) X (CAR X)))
-					 INSTANCE-VARIABLES)))))
-	    (RES NIL (CONS `(DEFSUBST ,(INTERN (CONCAT PREFIX (CAR VS)))
-				      (,NAME)
-			      ,(IF (MEMQ (CAR VS) ORDS)
-; SMH@EMS VVV			   `(VREF ,NAME
-;					  ,(+ 9 (* 3 (FIND-POSITION-IN-LIST
-;						      (CAR VS) ORDS))))
-				   `(INT:FCLOSURE-STACK-STUFF
-				     (VREF ,NAME ,(+ 3 (FIND-POSITION-IN-LIST
-							(CAR VS) ORDS))))
-; SMH@EMS ^^^
-				   `(SYMEVAL-IN-FCLOSURE ,NAME ',(CAR VS))))
-			   RES)))
-	   ((NULL VS) RES))
-     ',NAME)))
+    ;; Define flavor at load time.
+    ;; Must come before the compile-time COMPOSE-AUTOMATIC-METHODS,
+    ;; which puts methods in the QFASL file.
+    `(eval-when (:load-toplevel :compile-toplevel)
+      (progn
+	(DEFFLAVOR1 ',NAME ',INSTANCE-VARIABLES ',COMPONENT-FLAVORS
+		    ',COPIED-OPTIONS))
+      ,@(COMPOSE-AUTOMATIC-METHODS (GET NAME 'FLAVOR))
+      ;; Make any instance-variable accessor macros.
+      ,@(DO ((VS (DO ((OPTS OPTIONS (CDR OPTS)))
+		     ((NULL OPTS) NIL)
+		   (AND (LISTP (CAR OPTS))
+			(EQ (CAAR OPTS) :OUTSIDE-ACCESSIBLE-INSTANCE-VARIABLES)
+			(RETURN (CDAR OPTS)))
+		   (AND (EQ (CAR OPTS) :OUTSIDE-ACCESSIBLE-INSTANCE-VARIABLES)
+			(RETURN (MAPCAR #'(LAMBDA (X) (IF (ATOM X) X (CAR X)))
+					INSTANCE-VARIABLES))))
+		 (CDR VS))
+	     (PREFIX (OR (CADR (ASSQ :ACCESSOR-PREFIX OPTIONS))
+			 (CONCAT NAME "-")))
+	     (ORDS (DO ((OPTS OPTIONS (CDR OPTS)))
+		       ((NULL OPTS) NIL)
+		     (AND (LISTP (CAR OPTS))
+			  (EQ (CAAR OPTS) :ORDERED-INSTANCE-VARIABLES)
+			  (RETURN (CDAR OPTS)))
+		     (AND (EQ (CAR OPTS) :ORDERED-INSTANCE-VARIABLES)
+			  (RETURN (MAPCAR #'(LAMBDA (X) (IF (ATOM X) X (CAR X)))
+					  INSTANCE-VARIABLES)))))
+	     (RES NIL (CONS `(DEFUN ,(INTERN (CONCAT PREFIX (CAR VS)))
+				 (,NAME)
+			       ,(IF (MEMQ (CAR VS) ORDS)
+				    ;; SMH@EMS VVV			   `(VREF ,NAME
+				    ;;					  ,(+ 9 (* 3 (FIND-POSITION-IN-LIST
+				    ;;						      (CAR VS) ORDS))))
+				    `(INT-FCLOSURE-STACK-STUFF
+				      (VREF ,NAME ,(+ 3 (FIND-POSITION-IN-LIST
+							 (CAR VS) ORDS))))
+					; SMH@EMS ^^^
+				    `(SYMEVAL-IN-FCLOSURE ,NAME ',(CAR VS))))
+			    RES)))
+	    ((NULL VS) RES))
+      ',NAME)))
 
 (DEFMACRO DEFUN-METHOD (FSPEC FLAVOR-NAME ARGLIST &BODY BODY)
   `(DEFUN ,FSPEC ,ARGLIST
@@ -199,10 +197,14 @@
 
 (DEFVAR *FLAVOR-COMPILE-TRACE* NIL)
 
-(DEFSUBST INSTANCE-FLAVOR (INSTANCE)
+
+(defun int-fclosure-stack-stuff (&rest rest)
+  (error "Not implemented yet"))
+
+(DEFUN INSTANCE-FLAVOR (INSTANCE)
   (SYMEVAL-IN-FCLOSURE INSTANCE '.OWN-FLAVOR.))
 
-(DEFSUBST INSTANCE-FUNCTION (INSTANCE)
+(DEFUN INSTANCE-FUNCTION (INSTANCE)
   (FCLOSURE-FUNCTION INSTANCE))
 
 (DEFUN GET-FLAVOR (FLAVOR-OR-NAME &AUX TEMP)
@@ -215,7 +217,7 @@
 	(T (CHECK-ARG FLAVOR-OR-NAME (:TYPEP TEMP 'FLAVOR)
 		      "the name of a flavor"))))
 
-;;(DEFSUBST INSTANCEP (X)
+;;(DEFUN INSTANCEP (X)
 ;;  (AND (FCLOSUREP X) (EQ (FCLOSURE-FUNCTION X) #'FLAVOR-DISPATCH)))
 
 (DEFUN INSTANCE-TYPEP (OB TYPE)
@@ -226,39 +228,36 @@
 
 
 ;These properties are not discarded by redoing a DEFFLAVOR.
-(DEFCONST DEFFLAVOR1-PRESERVED-PROPERTIES
-	  '(ADDITIONAL-INSTANCE-VARIABLES
-	    COMPILE-FLAVOR-METHODS
-	    MAPPED-COMPONENT-FLAVORS
-	    INSTANCE-VARIABLE-INITIALIZATIONS
-	    ALL-INITABLE-INSTANCE-VARIABLES
-	    REMAINING-DEFAULT-PLIST
-	    REMAINING-INIT-KEYWORDS))
+(defparameter defflavor1-preserved-properties
+  '(additional-instance-variables compile-flavor-methods
+  mapped-component-flavors instance-variable-initializations
+  all-initable-instance-variables remaining-default-plist
+  remaining-init-keywords))
 
 ;These are instance variables that don't belong to this flavor or its components
 ;but can be accessed by methods of this flavor.
-(DEFSUBST FLAVOR-ADDITIONAL-INSTANCE-VARIABLES (FLAVOR)
+(DEFUN FLAVOR-ADDITIONAL-INSTANCE-VARIABLES (FLAVOR)
   (GET (FLAVOR-PLIST FLAVOR) 'ADDITIONAL-INSTANCE-VARIABLES))
 
 ;The next four are distillations of info taken from this flavor and its components,
 ;used for instantiating this flavor.  See COMPOSE-FLAVOR-INITIALIZATIONS.
-(DEFSUBST FLAVOR-INSTANCE-VARIABLE-INITIALIZATIONS (FLAVOR)
+(DEFUN FLAVOR-INSTANCE-VARIABLE-INITIALIZATIONS (FLAVOR)
   (GET (FLAVOR-PLIST FLAVOR) 'INSTANCE-VARIABLE-INITIALIZATIONS))
 
-(DEFSUBST FLAVOR-REMAINING-DEFAULT-PLIST (FLAVOR)
+(DEFUN FLAVOR-REMAINING-DEFAULT-PLIST (FLAVOR)
   (GET (FLAVOR-PLIST FLAVOR) 'REMAINING-DEFAULT-PLIST))
 
-(DEFSUBST FLAVOR-REMAINING-INIT-KEYWORDS (FLAVOR)
+(DEFUN FLAVOR-REMAINING-INIT-KEYWORDS (FLAVOR)
   (GET (FLAVOR-PLIST FLAVOR) 'REMAINING-INIT-KEYWORDS))
 
-(DEFSUBST FLAVOR-ALL-INITABLE-INSTANCE-VARIABLES (FLAVOR)
+(DEFUN FLAVOR-ALL-INITABLE-INSTANCE-VARIABLES (FLAVOR)
   (GET (FLAVOR-PLIST FLAVOR) 'ALL-INITABLE-INSTANCE-VARIABLES))
 
-(DEFUN (FLAVOR :NAMED-STRUCTURE-INVOKE) (OPERATION &OPTIONAL SELF &REST ARGS)
+(DEFUN FLAVOR (OPERATION &OPTIONAL SELF &REST ARGS)
   (SELECTQ OPERATION
 	   (:WHICH-OPERATIONS '(:PRINT-SELF :DESCRIBE))
 	   (:PRINT-SELF
-	    (SI:PRINTING-RANDOM-OBJECT (SELF (CAR ARGS))
+	    (PRINTING-RANDOM-OBJECT (SELF (CAR ARGS))
 	       (FORMAT (CAR ARGS) "FLAVOR ~S" (FLAVOR-NAME SELF))))
 	   (:DESCRIBE (DESCRIBE-FLAVOR SELF))
 	   (OTHERWISE
@@ -299,52 +298,54 @@
 ;
 ; A combination-type of NIL means it has not been explicitly specified.
 
-; Method-combination functions.  Found on the SI:METHOD-COMBINATION property
-; of the combination-type.  These are passed the flavor structure, and the
-; magic-list entry, and must return the function spec to use as the handler.
-; It should also define or compile thew definition for that function spec if nec.
-; This function interprets combination-type-arg,
-; which for many combination-types is either :BASE-FLAVOR-FIRST or :BASE-FLAVOR-LAST.
+;;; Method-combination functions.  Found on the SI:METHOD-COMBINATION
+;;; property of the combination-type.  These are passed the flavor
+;;; structure, and the magic-list entry, and must return the function
+;;; spec to use as the handler.  It should also define or compile thew
+;;; definition for that function spec if nec.  This function
+;;; interprets combination-type-arg, which for many combination-types
+;;; is either :BASE-FLAVOR-FIRST or :BASE-FLAVOR-LAST.
 
-;This is an a-list from method type to function to write the code to go
-;in the combined method.  Users can add to this.
-(DEFCONST *SPECIALLY-COMBINED-METHOD-TYPES*
-	  '((:WRAPPER PUT-WRAPPER-INTO-COMBINED-METHOD)))
+;; This is an a-list from method type to function to write the code to
+;; go in the combined method.  Users can add to this.
+(defparameter *specially-combined-method-types*
+	  '((:wrapper put-wrapper-into-combined-method)))
 
-;Definitions of a meth (the datum which stands for a method)
+;; Definitions of a meth (the datum which stands for a method)
+(defstruct (meth (:type list) :conc-name (:constructor nil))
+  ;; No constructor because defstruct doesn't let me specify the area
+  function-spec
+  definition
+  (plist nil))
 
-(DEFSTRUCT (METH :LIST :CONC-NAME (:CONSTRUCTOR NIL))
-		;No constructor because defstruct doesn't let me specify the area
-  FUNCTION-SPEC
-  DEFINITION
-  (PLIST NIL))
+;; If there is no definition, it contains DTP-NULL and a pointer to
+;; the meth
 
-; If there is no definition, it contains DTP-NULL and a pointer to the meth
-
-; Extract the method-type of a meth
-(DEFMACRO METH-METHOD-TYPE (METH)
-  `(AND (CDDDR (METH-FUNCTION-SPEC ,METH))
-	(THIRD (METH-FUNCTION-SPEC ,METH))))
+;; Extract the method-type of a meth
+(defmacro meth-method-type (meth)
+  `(and (cdddr (meth-function-spec ,meth))
+	(third (meth-function-spec ,meth))))
 
 ; Return a meth of specified type from a list of meth's.
-(DEFUN METH-LOOKUP (METHOD-TYPE METH-LIST)
-  (LOOP FOR METH IN METH-LIST
-	WHEN (EQ (METH-METHOD-TYPE METH) METHOD-TYPE)
-	  RETURN METH))
+(defun meth-lookup (method-type meth-list)
+  (loop for meth in meth-list
+	when (eq (meth-method-type meth) method-type)
+	  return meth))
 
-(DEFUN NULLIFY-METHOD-DEFINITION (METH)
-  (SETF (METH-DEFINITION METH) NIL))
+(defun nullify-method-definition (meth)
+  (setf (meth-definition meth) nil))
 
-(DEFUN METH-DEFINEDP (METH)
-  (NOT (NULL (METH-DEFINITION METH))))
-
-;Function to define or redefine a flavor (used by DEFFLAVOR macro).
-;Note that to ease initialization problems, the flavors depended upon need
-;not be defined yet.  You will get an error the first time you try to create
-;an instance of this flavor if a flavor it depends on is still undefined.
-;When redefining a flavor, we reuse the same FLAVOR defstruct so that
-;old instances continue to get the latest methods, unless you change
-;something incompatibly, in which case you will get a warning.
+(defun meth-definedp (meth)
+  (not (null (meth-definition meth))))
+
+;; Function to define or redefine a flavor (used by DEFFLAVOR macro).
+;; Note that to ease initialization problems, the flavors depended
+;; upon need no be defined yet. You will get an error the first time
+;; you try to create an instance of this flavor if a flavor it depends
+;; on is still undefined. When redefining a flavor, we reuse the same
+;; FLAVOR defstruct so that old instances continue to get the latest
+;; methods, unless you change something incompatibly, in which case
+;; you will get a warning.
 (DEFUN DEFFLAVOR1 (FLAVOR-NAME INSTANCE-VARIABLES COMPONENT-FLAVORS OPTIONS
 		   &AUX FFL ALREADY-EXISTS INSTV IDENTICAL-COMPONENTS
 			GETTABLE SETTABLE INITABLE OLD-DEFAULT-HANDLER
@@ -398,10 +399,10 @@
 	  ;Don't validate.  User may reasonably want to specify non-local instance
 	  ;variables, and any bogus names here will get detected by COMPOSE-FLAVOR-COMBINATION
 	  ;(VALIDATE-INSTANCE-VARIABLES-SPEC ARGS INSTV FLAVOR-NAME OPTION)
-	  (PUTPROP PL (OR ARGS INSTV) ':ORDERED-INSTANCE-VARIABLES))
+	  (PUTPROP PL (OR ARGS INSTV) :ORDERED-INSTANCE-VARIABLES))
 	(:OUTSIDE-ACCESSIBLE-INSTANCE-VARIABLES
 	  (VALIDATE-INSTANCE-VARIABLES-SPEC ARGS INSTV FLAVOR-NAME OPTION)
-	  (PUTPROP PL (OR ARGS INSTV) ':OUTSIDE-ACCESSIBLE-INSTANCE-VARIABLES))
+	  (PUTPROP PL (OR ARGS INSTV) :OUTSIDE-ACCESSIBLE-INSTANCE-VARIABLES))
 	(:METHOD-COMBINATION
 	  (SETQ METH-COMB ARGS))
 	(:DEFAULT-HANDLER
@@ -421,13 +422,13 @@
 	(AND ALREADY-EXISTS
 	     (EQUAL COMPONENT-FLAVORS (FLAVOR-DEPENDS-ON ALREADY-EXISTS))
 	     (EQUAL INCLUDES (FLAVOR-INCLUDES ALREADY-EXISTS))
-	     (EQUAL (GET PL ':REQUIRED-FLAVORS)
-		    (GET (FLAVOR-PLIST ALREADY-EXISTS) ':REQUIRED-FLAVORS))))
+	     (EQUAL (GET PL :REQUIRED-FLAVORS)
+		    (GET (FLAVOR-PLIST ALREADY-EXISTS) :REQUIRED-FLAVORS))))
   (AND ALREADY-EXISTS
        (SETQ OLD-DEFAULT-HANDLER (GET (FLAVOR-PLIST ALREADY-EXISTS)
-				      ':DEFAULT-HANDLER)
+				      :DEFAULT-HANDLER)
 	     OLD-DEFAULT-INIT-PLIST (GET (FLAVOR-PLIST ALREADY-EXISTS)
-					 ':DEFAULT-INIT-PLIST)
+					 :DEFAULT-INIT-PLIST)
 	     OLD-LOCAL-IVS (FLAVOR-LOCAL-INSTANCE-VARIABLES ALREADY-EXISTS)
 	     OLD-INITABLE-IVS (FLAVOR-INITABLE-INSTANCE-VARIABLES ALREADY-EXISTS)
 	     OLD-INIT-KWDS (FLAVOR-INIT-KEYWORDS ALREADY-EXISTS)))
@@ -438,9 +439,9 @@
   ;; instances will retain the old information.  The instance variables can
   ;; get changed either locally or by rearrangement of the component flavors.
   (AND ALREADY-EXISTS
-       (IF (AND (EQUAL (GET PL ':ORDERED-INSTANCE-VARIABLES)
+       (IF (AND (EQUAL (GET PL :ORDERED-INSTANCE-VARIABLES)
 		       (GET (FLAVOR-PLIST ALREADY-EXISTS)
-			    ':ORDERED-INSTANCE-VARIABLES))
+			    :ORDERED-INSTANCE-VARIABLES))
 		(OR (EQUAL (FLAVOR-LOCAL-INSTANCE-VARIABLES ALREADY-EXISTS)
 			   INSTANCE-VARIABLES)
 		    (EQUAL (MAPCAR #'(LAMBDA (X) (IF (ATOM X) X (CAR X)))
@@ -570,7 +571,7 @@
 	  ;; Flush from the copy all combined methods.
 	  (DO ((TAIL2 (CDDDR (CAR TAIL)) (CDR TAIL2)))
 	      ((NULL TAIL2))
-	    (AND (EQ (METH-METHOD-TYPE (CAR TAIL2)) ':COMBINED)
+	    (AND (EQ (METH-METHOD-TYPE (CAR TAIL2)) :COMBINED)
 		 (SETF (CDDDAR TAIL)
 		       (DELQ (CAR TAIL2) (CDDDAR TAIL))))))
       ;; Now copy each METH that we didn't delete.
@@ -700,11 +701,11 @@
 ;; is null, that symbol is a function which stands in for the method.
 (DEFMACRO DEFMETHOD (SPEC LAMBDA-LIST . BODY)
   (LET ((CLASS-NAME (CAR SPEC))
-	(FUNCTION-SPEC (CONS ':METHOD SPEC))
+	(FUNCTION-SPEC (CONS :METHOD SPEC))
 	FUNCTION-NAME)
     (SETQ FUNCTION-NAME (METHOD-FUNCTION-NAME FUNCTION-SPEC))
     `(PROGN 'COMPILE
-       (EVAL-WHEN (COMPILE LOAD EVAL)
+       (eval-when (:compile-toplevel :load-toplevel :execute)
 	  (FLAVOR-NOTICE-METHOD ',FUNCTION-SPEC))
        ;; At load-time, define the method function
        ,(COND ((AND (SYMBOLP LAMBDA-LIST) (NOT (NULL LAMBDA-LIST))
@@ -722,10 +723,6 @@
 		(FERROR () "Old Class system is not SUPPORTED")))
        ',FUNCTION-SPEC)))
 
-(DEFUN REMOVE-COLON (SYMBOL)
-  (IF (= (GETCHARN SYMBOL 1) #/:)
-      (CONCAT (SUBSTRING SYMBOL 2))
-      SYMBOL))
 
 ; This lets you specify code to be wrapped around the invocation of the
 ; various methods for an operation.  For example,
@@ -796,7 +793,7 @@
 	(TYPE (THIRD FUNCTION-SPEC))
 	(MESSAGE (FOURTH FUNCTION-SPEC)))
     (IF (NULL MESSAGE) (SETQ MESSAGE TYPE TYPE NIL))	;If no type
-    (IF (OR (NULL MESSAGE) (NEQ (FIRST FUNCTION-SPEC) ':METHOD)
+    (IF (OR (NULL MESSAGE) (NEQ (FIRST FUNCTION-SPEC) :METHOD)
 	    (> (LENGTH FUNCTION-SPEC) 4)
 	    (NOT (SYMBOLP FLAVOR-NAME)) (NOT (SYMBOLP TYPE))
 	    (NOT (SYMBOLP MESSAGE)))
@@ -853,11 +850,11 @@
 ;; third slot.
 ; SMH@EMS VVV
 ; Perforce, %instance-ref no longer used.
-;	(DEFSUBST %INSTANCE-REF (INSTANCE INDEX)
+;	(DEFUN %INSTANCE-REF (INSTANCE INDEX)
 ;	  (VREF INSTANCE (+ 9. (* 3 INDEX))))
-;	(DEFSUBST INSTANCE-FLAVOR (INSTANCE) (VREF INSTANCE 6))
+;	(DEFUN INSTANCE-FLAVOR (INSTANCE) (VREF INSTANCE 6))
 ; The previous instance-flavor ought always to be good, if inefficient.
-;	(DEFSUBST INSTANCE-FLAVOR (INSTANCE) (VREF INSTANCE 3))
+;	(DEFUN INSTANCE-FLAVOR (INSTANCE) (VREF INSTANCE 3))
 ; SMH@EMS ^^^
 
 ;Make an object of a particular flavor.
@@ -888,7 +885,7 @@
 ;	DO (PROGN (SETF (%INSTANCE-REF INSTANCE I)
 ;			(FAST-EVAL (CADAR IVS)))
 ;		  (POP IVS)))
-	DO (PROGN (INT:FCLOSURE-STACK-STUFF (VREF INSTANCE (+ 3 I))
+	DO (PROGN (INT-FCLOSURE-STACK-STUFF (VREF INSTANCE (+ 3 I))
 					    (FAST-EVAL (CADAR IVS)))
 		  (POP IVS)))
 ; SMH@EMS ^^^
@@ -939,10 +936,10 @@
 	       (LENGTH UNHANDLED-KEYWORDS)
 	       UNHANDLED-KEYWORDS))
   (AND (EQ SEND-INIT-MESSAGE-P 'MAYBE)
-       (NOT (GET-HANDLER-FOR INSTANCE ':INIT))
+       (NOT (GET-HANDLER-FOR INSTANCE :INIT))
        (SETQ SEND-INIT-MESSAGE-P NIL))
   (AND SEND-INIT-MESSAGE-P
-       (SEND INSTANCE ':INIT INIT-PLIST))
+       (SEND INSTANCE :INIT INIT-PLIST))
   (VALUES INSTANCE UNHANDLED-KEYWORDS))
 
 (DEFUN MEMQ-ALTERNATED (ELT LIST)
@@ -967,7 +964,7 @@
   (OR (FLAVOR-DEPENDS-ON-ALL FL) (COMPOSE-FLAVOR-COMBINATION FL))
   (DOLIST (FFL (FLAVOR-DEPENDS-ON-ALL FL))
     (SETQ FFL (GET FFL 'FLAVOR))
-    (DO L (GET (FLAVOR-PLIST FFL) ':DEFAULT-INIT-PLIST) (CDDR L) (NULL L)
+    (DO L (GET (FLAVOR-PLIST FFL) :DEFAULT-INIT-PLIST) (CDDR L) (NULL L)
       (DO ((M (CDR INIT-PLIST) (CDDR M)))
 	  ((NULL M) (PUTPROP INIT-PLIST (EVAL (CADR L)) (CAR L)))
 	(AND (EQ (CAR M) (CAR L)) (RETURN)))))
@@ -1133,11 +1130,11 @@
       (SETF (FLAVOR-DEPENDS-ON-ALL FL) FLS))
   ;; Vanilla-flavor may have been put in by magic, so maintain the dependencies
   ;; in case new methods get added to it later.
-  (LET ((VAN (GET-FLAVOR 'SI:VANILLA-FLAVOR))
+  (LET ((VAN (GET-FLAVOR 'VANILLA-FLAVOR))
 	(FLAV (FLAVOR-NAME FL)))
     (AND (NOT (NULL VAN))
-	 (NEQ FLAV 'SI:VANILLA-FLAVOR)
-	 (MEMQ 'SI:VANILLA-FLAVOR FLS)
+	 (NEQ FLAV 'VANILLA-FLAVOR)
+	 (MEMQ 'VANILLA-FLAVOR FLS)
 	 (NOT (MEMQ FLAV (FLAVOR-DEPENDED-ON-BY VAN)))
 	 (PUSH FLAV (FLAVOR-DEPENDED-ON-BY VAN))))
   ;; Compute what the instance variables will be, and in what order.
@@ -1151,9 +1148,9 @@
       (OR (ATOM V) (SETQ V (CAR V)))
       (OR (MEMQ V VARS) (PUSH V VARS)))
     (SETQ REQS (UNION REQS
-		      (GET (FLAVOR-PLIST F) ':REQUIRED-INSTANCE-VARIABLES)))
+		      (GET (FLAVOR-PLIST F) :REQUIRED-INSTANCE-VARIABLES)))
     ;; Any variables our required flavors have or require, we require.
-    (DOLIST (FF (GET (FLAVOR-PLIST F) ':REQUIRED-FLAVORS))
+    (DOLIST (FF (GET (FLAVOR-PLIST F) :REQUIRED-FLAVORS))
       (COND ((AND (NOT (MEMQ FF FLS))
 		  (SETQ FF (GET-FLAVOR FF))
 		  (NOT (MEMQ FF (CDR FLAVORS-BEING-COMPOSED))))
@@ -1161,7 +1158,7 @@
 	     (SETQ REQS
 		   (UNION REQS (FLAVOR-ALL-INSTANCE-VARIABLES FF)
 			  (GET (FLAVOR-PLIST FF) 'ADDITIONAL-INSTANCE-VARIABLES))))))
-    (LET ((ORD (GET (FLAVOR-PLIST F) ':ORDERED-INSTANCE-VARIABLES)))
+    (LET ((ORD (GET (FLAVOR-PLIST F) :ORDERED-INSTANCE-VARIABLES)))
       ;; Merge into existing order requirement.  Shorter of the two must be
       ;; a prefix of the longer, and we take the longer.
       (DO ((L1 ORD (CDR L1))
@@ -1210,38 +1207,47 @@
     ;; Now attach vanilla-flavor if desired
     (OR (LOOP FOR FLAVOR IN FLS
 	      THEREIS (GET (FLAVOR-PLIST (GET-FLAVOR FLAVOR))
-			   ':NO-VANILLA-FLAVOR))
-	(PUSH 'SI:VANILLA-FLAVOR FLS))
+			   :NO-VANILLA-FLAVOR))
+	(PUSH 'VANILLA-FLAVOR FLS))
     (NREVERSE FLS)))
 
-(local-declare ((special other-components))
-(DEFUN COMPOSE-FLAVOR-INCLUSION-1 (FLAVOR OTHER-COMPONENTS ERROR-P)
-  ;; First, make a backwards list of all the normal (non-included) components
-  (LET ((FLS (MAP-OVER-COMPONENT-FLAVORS 1 ERROR-P NIL
-	       #'(LAMBDA (FL LIST)
-		   (SETQ FL (FLAVOR-NAME FL))
-		   (OR (MEMQ FL LIST)
-		       (MEMQ FL OTHER-COMPONENTS)
-		       (PUSH FL LIST))
-		   LIST)
-	       FLAVOR NIL))
-	(ADDITIONS NIL))
-    ;; If there are any inclusions that aren't in the list, plug
-    ;; them in right after (before in backwards list) their last (first) includer
-    (DO L FLS (CDR L) (NULL L)
-      (DOLIST (FL (FLAVOR-INCLUDES (GET-FLAVOR (CAR L))))
-	(OR (MEMQ FL FLS)
-	    (MEMQ FL OTHER-COMPONENTS)
-	    (PUSH (CAR (RPLACA (RPLACD L (CONS (CAR L) (CDR L))) FL)) ADDITIONS))))
-    (OR (MEMQ FLAVOR FLS)
-	(SETQ FLS (NCONC FLS
-			 (NREVERSE
-			   (LOOP FOR FL IN (FLAVOR-INCLUDES (GET-FLAVOR FLAVOR))
-				 UNLESS (OR (MEMQ FL FLS) (MEMQ FL OTHER-COMPONENTS))
-				   COLLECT FL
-				   AND DO (PUSH FL ADDITIONS))))))
-    (VALUES FLS ADDITIONS))))
-
+;;; This seems to have been needed because of the lack of (robust?)
+;;; lexical scoping in maclisp.
+
+;;; (local-declare ((special other-components))
+(defvar *other-components*)
+
+(defun compose-flavor-inclusion-1 (flavor other-components error-p)
+  (let ((*other-components* other-components))
+    ;; First, make a backwards list of all the normal (non-included) components
+    (let ((fls (map-over-component-flavors 1 error-p nil
+					   #'(lambda (fl list)
+					       (setq fl (flavor-name fl))
+					       (or (memq fl list)
+						   (memq fl *other-components*)
+						   (push fl list))
+					       list)
+					   flavor nil))
+	  (additions nil))
+      ;; If there are any inclusions that aren't in the list, plug
+      ;; them in right after (before in backwards list) their last
+      ;; (first) includer
+      (do l fls (cdr l) (null l)
+	(dolist (fl (flavor-includes (get-flavor (car l))))
+	  (or (memq fl fls)
+	      (memq fl *other-components*)
+	      (push (car (rplaca (rplacd l (cons (car l) (cdr l))) fl)) additions))))
+      (or (memq flavor fls)
+	  (setq fls (nconc fls
+			   (nreverse
+			    (loop for fl in (flavor-includes (get-flavor flavor))
+			       unless (or (memq fl fls) (memq fl *other-components*))
+			       collect fl
+			       and do (push fl additions))))))
+      (values fls additions))))
+
+;; )
+
 ;Once the flavor-combination stuff has been done, do the method-combination stuff.
 ;The above function usually only gets called once, but this function gets called
 ;when a new method is added.
@@ -1271,7 +1277,7 @@
     (SETQ FFL (GET-FLAVOR (CAR FFLS))
 	  PL (FLAVOR-PLIST FFL))
     (COND ((NOT SINGLE-OPERATION)
-	   (AND (SETQ TEM (GET PL ':SELECT-METHOD-ORDER))
+	   (AND (SETQ TEM (GET PL :SELECT-METHOD-ORDER))
 		(SETQ ORDER (NCONC ORDER (COPYLIST TEM))))))
     ;; Add data from flavor method-table to magic-list
     ;; But skip over combined methods, they are not relevant here
@@ -1281,7 +1287,7 @@
 	     ;; Well, we're supposed to concern ourselves with this operation
 	     (SETQ ELEM (ASSQ MSG MAGIC-LIST))	;What we already know about it
 	     (COND ((DOLIST (METH (CDDDR MTE))
-		      (OR (EQ (METH-METHOD-TYPE METH) ':COMBINED)
+		      (OR (EQ (METH-METHOD-TYPE METH) :COMBINED)
 			  (NOT (METH-DEFINEDP METH))
 			  (RETURN T)))
 		    ;; OK, this flavor really contributes to handling this operation
@@ -1290,7 +1296,7 @@
 		    ;; of the magic-list element, thus they are in base-flavor-first order.
 		    (DOLIST (METH (CDDDR MTE))
 		      (LET ((TYPE (METH-METHOD-TYPE METH)))
-			(COND ((EQ TYPE ':COMBINED))
+			(COND ((EQ TYPE :COMBINED))
 			      ((NOT (METH-DEFINEDP METH)))
 			      ((NOT (SETQ TEM (ASSQ TYPE (CDDDR ELEM))))
 			       (PUSH (LIST TYPE (METH-FUNCTION-SPEC METH)) (CDDDR ELEM)))
@@ -1321,11 +1327,11 @@
     (COND ((CDDDR MTE)
 	   ;; Process the :DEFAULT methods; if there are any untyped methods the
 	   ;; default methods go away, otherwise they become untyped methods.
-	   (AND (SETQ TEM (ASSQ ':DEFAULT (CDDDR MTE)))
+	   (AND (SETQ TEM (ASSQ :DEFAULT (CDDDR MTE)))
 		(IF (ASSQ NIL (CDDDR MTE))
 		    (SETF (CDDDR MTE) (DELQ TEM (CDDDR MTE)))
 		    (RPLACA TEM NIL)))
-	   (OR (SETQ TEM (GET (OR (CADR MTE) ':DAEMON) 'METHOD-COMBINATION))
+	   (OR (SETQ TEM (GET (OR (CADR MTE) :DAEMON) 'METHOD-COMBINATION))
 	       (FERROR () "~S unknown method combination type for ~S operation"
 		           (CADR MTE) (CAR MTE)))
 	   (PUSH (FUNCALL TEM FL MTE) HANDLERS))
@@ -1350,7 +1356,7 @@
 	;; Working on all operations at once.
 	(T
 	 (SETQ HT (MAKE-HASH-TABLE
-		   ':SIZE (FIX (TIMES 1.5 (LENGTH MAGIC-LIST)))))
+		   :SIZE (FIX (TIMES 1.5 (LENGTH MAGIC-LIST)))))
 	 ;; If flavor currently has no hash table, it can't hurt to set
 	 ;; it early
 	 (OR (FLAVOR-METHOD-HASH-TABLE FL)
@@ -1393,17 +1399,17 @@ Requiring Flavor alist: ~S"
 		    MISSING-FLAVORS
 		    REQUIRING-FLAVOR-ALIST)))
     (LET ((PL (FLAVOR-PLIST (GET (CAR FFLS) 'FLAVOR))))
-      (DOLIST (REQM (GET PL ':REQUIRED-METHODS))
+      (DOLIST (REQM (GET PL :REQUIRED-METHODS))
 	(OR (ASSQ REQM MAGIC-LIST)
 	    (MEMQ REQM MISSING-METHODS)
 	    (PROGN (PUSH REQM MISSING-METHODS)
 		   (PUSH (CONS (FIRST FFLS) REQM) REQUIRING-FLAVOR-ALIST))))
-      (DOLIST (REQV (GET PL ':REQUIRED-INSTANCE-VARIABLES))
+      (DOLIST (REQV (GET PL :REQUIRED-INSTANCE-VARIABLES))
 	(OR (MEMQ REQV (FLAVOR-ALL-INSTANCE-VARIABLES FL))
 	    (MEMQ REQV MISSING-INSTANCE-VARIABLES)
 	    (PROGN (PUSH REQV MISSING-INSTANCE-VARIABLES)
 		   (PUSH (CONS (FIRST FFLS) REQV) REQUIRING-FLAVOR-ALIST))))
-      (DOLIST (REQF (GET PL ':REQUIRED-FLAVORS))
+      (DOLIST (REQF (GET PL :REQUIRED-FLAVORS))
 	(OR (MEMQ REQF (FLAVOR-DEPENDS-ON-ALL FL))
 	    (MEMQ REQF MISSING-FLAVORS)
 	    (PROGN (PUSH REQF MISSING-FLAVORS)
@@ -1414,7 +1420,7 @@ Requiring Flavor alist: ~S"
   (DECLARE (SPECIAL SELF))
   (FORMAT T "The object ")
   (PRINT SELF)
-  (FERROR ':UNCLAIMED-MESSAGE " received a ~S message, which went unclaimed.
+  (FERROR :UNCLAIMED-MESSAGE " received a ~S message, which went unclaimed.
 The rest of the message was ~S~%" MESSAGE ARGS))
 
 ;Return an alist of operations and their handlers.
@@ -1454,7 +1460,7 @@ The rest of the message was ~S~%" MESSAGE ARGS))
 
 ;Given a symbol return the corresponding one in the keyword package
 (DEFUN CORRESPONDING-KEYWORD (SYMBOL)
-  (IF (= #/: (GETCHARN SYMBOL 1)) SYMBOL
+  (IF (= #\: (GETCHARN SYMBOL 1)) SYMBOL
       (INTERN (CONCAT ":" SYMBOL))))
 
 ;Figure out the information needed to instantiate a flavor quickly.
@@ -1481,7 +1487,7 @@ The rest of the message was ~S~%" MESSAGE ARGS))
     (LET ((FFL (GET-FLAVOR FFL)))
       (OR (FLAVOR-DEFAULT-HANDLER FL)
 	  (SETF (FLAVOR-DEFAULT-HANDLER FL)
-		(GET (FLAVOR-PLIST FFL) ':DEFAULT-HANDLER)))
+		(GET (FLAVOR-PLIST FFL) :DEFAULT-HANDLER)))
       (DOLIST (IIV (FLAVOR-INITABLE-INSTANCE-VARIABLES FFL))
 	(LET ((INDEX (FIND-POSITION-IN-LIST (CDR IIV)
 			(FLAVOR-ALL-INSTANCE-VARIABLES FL))))
@@ -1493,7 +1499,7 @@ The rest of the message was ~S~%" MESSAGE ARGS))
   ;; Any that doesn't initialize a variable, put on the "remaining" list.
   (DOLIST (FFL (FLAVOR-DEPENDS-ON-ALL FL))
     (SETQ FFL (GET-FLAVOR FFL))
-    (DO ((L (GET (FLAVOR-PLIST FFL) ':DEFAULT-INIT-PLIST) (CDDR L))) ((NULL L))
+    (DO ((L (GET (FLAVOR-PLIST FFL) :DEFAULT-INIT-PLIST) (CDDR L))) ((NULL L))
       (LET* ((KEYWORD (CAR L)) (ARG (CADR L))
 	     (INDEX (FIND-POSITION-IN-LIST KEYWORD ALL-INITABLE-IVARS)))
 	(IF INDEX
@@ -1523,38 +1529,47 @@ The rest of the message was ~S~%" MESSAGE ARGS))
 	(LOOP FOR K IN (FLAVOR-ALLOWED-INIT-KEYWORDS FL)
 	      UNLESS (MEMQ K ALL-INITABLE-IVARS)
 	      COLLECT K)))
-
-; Method-combination functions.  Found on the SI:METHOD-COMBINATION property
-; of the combination-type.  These are passed the flavor structure, and the
-; magic-list entry, and must return the function-spec for the handler
-; to go into the select-method, defining any necessary functions.
-; This function interprets combination-type-arg,
-; which for many combination-types is either :BASE-FLAVOR-FIRST or :BASE-FLAVOR-LAST.
 
-; :DAEMON combination
-; The primary method is the outermost untyped-method (or :DEFAULT).
-; The :BEFORE methods are called base-flavor-last, the :AFTER methods are called
-; base-flavor-first.  An important optimization is not to generate a combined-method
-; if there is only a primary method.  You are allowed to omit the primary method
-; if there are any daemons (I'm not convinced this is really a good idea) in which
+;; Method-combination functions. Found on the SI:METHOD-COMBINATION
+;; property of the combination-type. These are passed the flavor
+;; structure, and the magic-list entry, and must return the
+;; function-spec for the handler to go into the select-method,
+;; defining any necessary functions.  This function interprets
+;; combination-type-arg, which for many combination-types is either
+;; :BASE-FLAVOR-FIRST or :BASE-FLAVOR-LAST.
+
+;; :DAEMON combination
+;; The primary method is the outermost untyped-method (or :DEFAULT).
+;; The :BEFORE methods are called base-flavor-last, the :AFTER methods
+;; are called base-flavor-first. An important optimization is not to
+;; generate a combined-method if there is only a primary method. You
+;; are allowed to omit the primary method if there are any daemons
+;; (I'm not convinced this is really a good idea) in which
 ; case the method's returned value will be NIL.
-(DEFUN (:DAEMON METHOD-COMBINATION) (FL MAGIC-LIST-ENTRY)
-  (LET ((PRIMARY-METHOD (CAR (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY NIL '(:BEFORE :AFTER) T
-						  ':BASE-FLAVOR-LAST)))
-	(BEFORE-METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY ':BEFORE T T
-					     ':BASE-FLAVOR-LAST))
-	(AFTER-METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY ':AFTER T T
-					    ':BASE-FLAVOR-FIRST))
-	(WRAPPERS-P (SPECIALLY-COMBINED-METHODS-PRESENT MAGIC-LIST-ENTRY)))
+(defun daemon (fl magic-list-entry)
+  (let ((primary-method (car (get-certain-methods magic-list-entry nil '(:before :after) t
+						  :base-flavor-last)))
+	(before-methods (get-certain-methods magic-list-entry :before t t
+					     :base-flavor-last))
+	(after-methods (get-certain-methods magic-list-entry :after t t
+					    :base-flavor-first))
+	(wrappers-p (specially-combined-methods-present magic-list-entry)))
     ;; Remove shadowed primary methods from the magic-list-entry so that it won't look like
     ;; we depend on them (which could cause extraneous combined-method recompilation).
-    (LET ((MLE (ASSQ NIL (CDDDR MAGIC-LIST-ENTRY))))
-      (AND (CDDR MLE)
-	   (SETF (CDR MLE) (LIST PRIMARY-METHOD))))
-    (OR (AND (NOT WRAPPERS-P) (NULL BEFORE-METHODS) (NULL AFTER-METHODS) PRIMARY-METHOD)
-	(HAVE-COMBINED-METHOD FL MAGIC-LIST-ENTRY)
-	(MAKE-COMBINED-METHOD FL MAGIC-LIST-ENTRY
-	   (DAEMON-COMBINATION PRIMARY-METHOD BEFORE-METHODS AFTER-METHODS)))))
+    (let ((mle (assq nil (cdddr magic-list-entry))))
+      (and (cddr mle)
+	   (setf (cdr mle) (list primary-method))))
+    (or (and (not wrappers-p) (null before-methods) (null after-methods) primary-method)
+	(have-combined-method fl magic-list-entry)
+	(make-combined-method fl magic-list-entry
+	   (daemon-combination primary-method before-methods after-methods)))))
+
+;; Todo ed -- Why is this necessary?  i.e does this really accomplish
+;; the purpose of the original:
+;;
+;; (DEFUN (:DAEMON METHOD-COMBINATION) (FL MAGIC-LIST-ENTRY)
+;;   ....
+(setf (get :DAEMON 'METHOD-COMBINATION) #'DAEMON)
 
 (DEFUN DAEMON-COMBINATION (PRIMARY-METHOD BEFORE-METHODS AFTER-METHODS
 			   &OPTIONAL OR-METHODS AND-METHODS)
@@ -1583,132 +1598,150 @@ The rest of the message was ~S~%" MESSAGE ARGS))
 (DEFUN METHOD-CALL (METHOD)
   `(LEXPR-FUNCALL #',(METHOD-FUNCTION-NAME METHOD) .DAEMON-CALLER-ARGS.))
 
-; :DAEMON-WITH-OVERRIDE combination
-; This is the same as :DAEMON (the default), except that :OVERRIDE type methods
-; are combined with the :BEFORE-primary-:AFTER methods in an OR.  This allows
-; overriding of the main methods function.  For example, a combined method as follows
-; might be generated: (OR (FOO-OVERRIDE-BAR-METHOD) (PROGN (FOO-BEFORE-BAR-METHOD)))
-(DEFUN (:DAEMON-WITH-OVERRIDE METHOD-COMBINATION) (FL MAGIC-LIST-ENTRY)
-  (LET ((PRIMARY-METHOD (CAR (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY NIL
-						  '(:BEFORE :AFTER :OVERRIDE) T
-						  ':BASE-FLAVOR-LAST)))
-	(BEFORE-METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY ':BEFORE T T
-					     ':BASE-FLAVOR-LAST))
-	(AFTER-METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY ':AFTER T T
-					    ':BASE-FLAVOR-FIRST))
-	(WRAPPERS-P (SPECIALLY-COMBINED-METHODS-PRESENT MAGIC-LIST-ENTRY))
-	(OVERRIDE-METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY
-					       ':OVERRIDE T T NIL)))
+;; :DAEMON-WITH-OVERRIDE combination
+;; This is the same as :DAEMON (the default), except that :OVERRIDE type methods
+;; are combined with the :BEFORE-primary-:AFTER methods in an OR.  This allows
+;; overriding of the main methods function.  For example, a combined method as follows
+;; might be generated: (OR (FOO-OVERRIDE-BAR-METHOD) (PROGN (FOO-BEFORE-BAR-METHOD)))
+(defun daemon-with-override (fl magic-list-entry)
+  (let ((primary-method (car (get-certain-methods magic-list-entry nil
+						  '(:before :after :override) t
+						  :base-flavor-last)))
+	(before-methods (get-certain-methods magic-list-entry :before t t
+					     :base-flavor-last))
+	(after-methods (get-certain-methods magic-list-entry :after t t
+					    :base-flavor-first))
+	(wrappers-p (specially-combined-methods-present magic-list-entry))
+	(override-methods (get-certain-methods magic-list-entry
+					       :override t t nil)))
     ;; Remove shadowed primary methods from the magic-list-entry so that it won't look like
     ;; we depend on them (which could cause extraneous combined-method recompilation).
-    (LET ((MLE (ASSQ NIL (CDDDR MAGIC-LIST-ENTRY))))
-      (AND (CDDR MLE)
-	   (SETF (CDR MLE) (LIST PRIMARY-METHOD))))
-    (OR (AND (NOT WRAPPERS-P) (NULL BEFORE-METHODS) (NULL AFTER-METHODS)
-	     (NULL OVERRIDE-METHODS)
-	     PRIMARY-METHOD)
-	(HAVE-COMBINED-METHOD FL MAGIC-LIST-ENTRY)
-	(MAKE-COMBINED-METHOD FL MAGIC-LIST-ENTRY
-	  `(OR ,@(MAPCAR 'METHOD-CALL OVERRIDE-METHODS)
-	       ,(DAEMON-COMBINATION PRIMARY-METHOD BEFORE-METHODS AFTER-METHODS))))))
+    (let ((mle (assq nil (cdddr magic-list-entry))))
+      (and (cddr mle)
+	   (setf (cdr mle) (list primary-method))))
+    (or (and (not wrappers-p) (null before-methods) (null after-methods)
+	     (null override-methods)
+	     primary-method)
+	(have-combined-method fl magic-list-entry)
+	(make-combined-method fl magic-list-entry
+	  `(or ,@(mapcar 'method-call override-methods)
+	       ,(daemon-combination primary-method before-methods after-methods))))))
 
-; :DAEMON-WITH-OR combination
-; This is the same as :DAEMON (the default), except that :OR type methods
-; are combined with the primary methods inside an OR, and used in place of
-; the primary method in :DAEMON type combination.
-; For example, the following combined method might be generated:
-; (PROGN (FOO-BEFORE-BAR-METHOD)
-;	 (PROG (.VAL1. .VAL2. .VAL3.)
-;	       (OR (FOO-OR-BAR-METHOD)
-;		   (BAZ-OR-BAR-METHOD)
-;		   (MULTIPLE-VALUE (.VAL1. .VAL2. .VAL3.)
-;		     (BUZZ-PRIMARY-METHOD)))
-;	       (FOO-AFTER-BAR-METHOD)
-;	       (RETURN .VAL1. .VAL2. .VAL3.)))
+;; For discussion see the function daemon
+(setf (get :daemon-with-override 'method-combination) #'daemon-with-override)
 
-(DEFUN (:DAEMON-WITH-OR METHOD-COMBINATION) (FL MAGIC-LIST-ENTRY)
-  (LET ((PRIMARY-METHOD (CAR (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY NIL '(:BEFORE :AFTER :OR) T
-						  ':BASE-FLAVOR-LAST)))
-	(BEFORE-METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY ':BEFORE T T
-					     ':BASE-FLAVOR-LAST))
-	(AFTER-METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY ':AFTER T T
-					    ':BASE-FLAVOR-FIRST))
-	(WRAPPERS-P (SPECIALLY-COMBINED-METHODS-PRESENT MAGIC-LIST-ENTRY))
-	(OR-METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY ':OR T T NIL)))
-    ;; Remove shadowed primary methods from the magic-list-entry so that it won't look like
-    ;; we depend on them (which could cause extraneous combined-method recompilation).
-    (LET ((MLE (ASSQ NIL (CDDDR MAGIC-LIST-ENTRY))))
-      (AND (CDDR MLE)
-	   (SETF (CDR MLE) (LIST PRIMARY-METHOD))))
-    (OR (AND (NOT WRAPPERS-P) (NULL BEFORE-METHODS) (NULL AFTER-METHODS)
-	     (NULL OR-METHODS)
-	     PRIMARY-METHOD)
-	(HAVE-COMBINED-METHOD FL MAGIC-LIST-ENTRY)
-	(MAKE-COMBINED-METHOD FL MAGIC-LIST-ENTRY
-	  (DAEMON-COMBINATION PRIMARY-METHOD BEFORE-METHODS AFTER-METHODS
-			      OR-METHODS)))))
+;; This is the same as :DAEMON (the default), except that :OR type
+;; methods are combined with the primary methods inside an OR, and
+;; used in place of the primary method in :DAEMON type combination.
+;; For example, the following combined method might be generated:
+;;
+;; (progn (foo-before-bar-method)
+;;	 (prog (.val1. .val2. .val3.)
+;;	       (or (foo-or-bar-method)
+;;		   (baz-or-bar-method)
+;;		   (multiple-value (.val1. .val2. .val3.)
+;;		     (buzz-primary-method)))
+;;	       (foo-after-bar-method)
+;;	       (return .val1. .val2. .val3.)))
+(defun daemon-with-or (fl magic-list-entry)
+  (let ((primary-method (car (get-certain-methods magic-list-entry nil '(:before :after :or) t
+						  :base-flavor-last)))
+	(before-methods (get-certain-methods magic-list-entry :before t t
+					     :base-flavor-last))
+	(after-methods (get-certain-methods magic-list-entry :after t t
+					    :base-flavor-first))
+	(wrappers-p (specially-combined-methods-present magic-list-entry))
+	(or-methods (get-certain-methods magic-list-entry :or t t nil)))
+    ;; Remove shadowed primary methods from the magic-list-entry so
+    ;; that it won't look like we depend on them (which could cause
+    ;; extraneous combined-method recompilation).
+    (let ((mle (assq nil (cdddr magic-list-entry))))
+      (and (cddr mle)
+	   (setf (cdr mle) (list primary-method))))
+    (or (and (not wrappers-p) (null before-methods) (null after-methods)
+	     (null or-methods)
+	     primary-method)
+	(have-combined-method fl magic-list-entry)
+	(make-combined-method fl magic-list-entry
+	  (daemon-combination primary-method before-methods after-methods
+			      or-methods)))))
 
-; :DAEMON-WITH-AND combination
-; This is the same as :DAEMON (the default), except that :AND type methods
-; are combined with the primary methods inside an AND, and used in place of
-; the primary method in :DAEMON type combination.
-; For example, the following combined method might be generated:
-; (PROGN (FOO-BEFORE-BAR-METHOD)
-;	 (PROG (.VAL1. .VAL2. .VAL3.)
-;	       (AND (FOO-AND-BAR-METHOD)
-;		    (BAZ-AND-BAR-METHOD)
-;		    (MULTIPLE-VALUE (.VAL1. .VAL2. .VAL3.)
-;		      (BUZZ-PRIMARY-METHOD)))
-;	       (FOO-AFTER-BAR-METHOD)
-;	       (RETURN .VAL1. .VAL2. .VAL3.)))
+;; For discussion see the function: daemon
+(setf (get :daemon-with-or 'method-combination) #'daemon-with-or)
 
-(DEFUN (:DAEMON-WITH-AND METHOD-COMBINATION) (FL MAGIC-LIST-ENTRY)
-  (LET ((PRIMARY-METHOD (CAR (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY NIL '(:BEFORE :AFTER :AND)
-						  T ':BASE-FLAVOR-LAST)))
-	(BEFORE-METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY ':BEFORE T T
-					     ':BASE-FLAVOR-LAST))
-	(AFTER-METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY ':AFTER T T
-					    ':BASE-FLAVOR-FIRST))
-	(WRAPPERS-P (SPECIALLY-COMBINED-METHODS-PRESENT MAGIC-LIST-ENTRY))
-	(AND-METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY ':AND T T NIL)))
-    ;; Remove shadowed primary methods from the magic-list-entry so that it won't look like
-    ;; we depend on them (which could cause extraneous combined-method recompilation).
-    (LET ((MLE (ASSQ NIL (CDDDR MAGIC-LIST-ENTRY))))
-      (AND (CDDR MLE)
-	   (SETF (CDR MLE) (LIST PRIMARY-METHOD))))
-    (OR (AND (NOT WRAPPERS-P) (NULL BEFORE-METHODS) (NULL AFTER-METHODS)
-	     (NULL AND-METHODS)
-	     PRIMARY-METHOD)
-	(HAVE-COMBINED-METHOD FL MAGIC-LIST-ENTRY)
-	(MAKE-COMBINED-METHOD FL MAGIC-LIST-ENTRY
-	  (DAEMON-COMBINATION PRIMARY-METHOD BEFORE-METHODS AFTER-METHODS
-			      NIL AND-METHODS)))))
 
-; :LIST combination
-; No typed-methods allowed.  Returns a list of the results of all the methods.
-; There will always be a combined-method, even if only one method to be called.
-(DEFUN (:LIST METHOD-COMBINATION) (FL MAGIC-LIST-ENTRY)
-  (OR (HAVE-COMBINED-METHOD FL MAGIC-LIST-ENTRY)
-      (MAKE-COMBINED-METHOD FL MAGIC-LIST-ENTRY
-	    (CONS 'LIST (MAPCAR 'METHOD-CALL
-				(GET-CERTAIN-METHODS MAGIC-LIST-ENTRY NIL NIL NIL NIL))))))
+;; This is the same as :DAEMON (the default), except that :AND type
+;; methods are combined with the primary methods inside an AND, and
+;; used in place of the primary method in :DAEMON type combination.
+;; For example, the following combined method might be generated:
+;;
+;; (progn (foo-before-bar-method)
+;;	 (prog (.val1. .val2. .val3.)
+;;	       (and (foo-and-bar-method)
+;;		    (baz-and-bar-method)
+;;		    (multiple-value (.val1. .val2. .val3.)
+;;		      (buzz-primary-method)))
+;;	       (foo-after-bar-method)
+;;	       (return .val1. .val2. .val3.)))
+(defun daemon-with-and (fl magic-list-entry)
+  (let ((primary-method (car (get-certain-methods magic-list-entry nil '(:before :after :and)
+						  t :base-flavor-last)))
+	(before-methods (get-certain-methods magic-list-entry :before t t
+					     :base-flavor-last))
+	(after-methods (get-certain-methods magic-list-entry :after t t
+					    :base-flavor-first))
+	(wrappers-p (specially-combined-methods-present magic-list-entry))
+	(and-methods (get-certain-methods magic-list-entry :and t t nil)))
+    ;; Remove shadowed primary methods from the magic-list-entry so
+    ;; that it won't look like we depend on them (which could cause
+    ;; extraneous combined-method recompilation).
+    (let ((mle (assq nil (cdddr magic-list-entry))))
+      (and (cddr mle)
+	   (setf (cdr mle) (list primary-method))))
+    (or (and (not wrappers-p) (null before-methods) (null after-methods)
+	     (null and-methods)
+	     primary-method)
+	(have-combined-method fl magic-list-entry)
+	(make-combined-method fl magic-list-entry
+	  (daemon-combination primary-method before-methods after-methods
+			      nil and-methods)))))
 
-; :INVERSE-LIST combination
-; No typed-methods allowed.  Apply each method to an element of the list.  Given
-; the result of a :LIST-combined method with the same ordering, and corresponding
-; method definitions, the result that emerged from each component flavor gets handed
-; back to that same flavor.  The combined-method returns no particular value.
-(DEFUN (:INVERSE-LIST METHOD-COMBINATION) (FL MAGIC-LIST-ENTRY)
-  (OR (HAVE-COMBINED-METHOD FL MAGIC-LIST-ENTRY)
-      (MAKE-COMBINED-METHOD FL MAGIC-LIST-ENTRY
-	 `(LET ((.FOO. (CADR .DAEMON-CALLER-ARGS.)))
-	    . ,(DO ((ML (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY NIL NIL NIL NIL) (CDR ML))
-		    (R NIL))
-		   ((NULL ML) (NREVERSE R))
-		 (PUSH `(FUNCALL #',(CAR ML)
-			  (CAR .DAEMON-CALLER-ARGS.) (CAR .FOO.))
-		       R)
-		 (AND (CDR ML) (PUSH '(SETQ .FOO. (CDR .FOO.)) R)))))))
+;; For discussion see the function: daemon
+(setf (get :daemon-with-and 'method-combination) #'daemon-with-and)
+
+;; No typed-methods allowed.  Returns a list of the results of all the
+;; methods.  There will always be a combined-method, even if only one
+;; method to be called.
+(defun flavors-list (fl magic-list-entry)
+  (or (have-combined-method fl magic-list-entry)
+      (make-combined-method fl magic-list-entry
+	    (cons 'list (mapcar 'method-call
+				(get-certain-methods magic-list-entry nil nil nil nil))))))
+
+;; It's possible, on further analysis that something like the
+;; following is needed, i.e. use the existing list special form:
+;; (setf (get :list 'method-combination) #'flavors-list)
+(setf (get :list 'method-combination) #'flavors-list)
+
+
+;; No typed-methods allowed.  Apply each method to an element of the list.  Given
+;; the result of a :LIST-combined method with the same ordering, and corresponding
+;; method definitions, the result that emerged from each component flavor gets handed
+;; back to that same flavor.  The combined-method returns no particular value.
+(defun inverse-list (fl magic-list-entry)
+  (or (have-combined-method fl magic-list-entry)
+      (make-combined-method fl magic-list-entry
+	 `(let ((.foo. (cadr .daemon-caller-args.)))
+	    . ,(do ((ml (get-certain-methods magic-list-entry nil nil nil nil) (cdr ml))
+		    (r nil))
+		   ((null ml) (nreverse r))
+		 (push `(funcall #',(car ml)
+			  (car .daemon-caller-args.) (car .foo.))
+		       r)
+		 (and (cdr ml) (push '(setq .foo. (cdr .foo.)) r)))))))
+
+;; For discussion see the function: daemon
+(setf (get :inverse-list 'method-combination) #'inverse-list)
 
 ; Combination types PROGN, AND, OR, MAX, MIN, +, APPEND, NCONC
 ; These just call all the untyped methods, inside the indicated special form.
@@ -1716,92 +1749,100 @@ The rest of the message was ~S~%" MESSAGE ARGS))
 ; ?? There should be hair where methods with an extra keyword in them
 ; get to act as conditionals controlling which other methods get called,
 ; if anyone can ever specify exactly what this means.
-(DEFPROP :PROGN SIMPLE-METHOD-COMBINATION METHOD-COMBINATION)
-(DEFPROP :AND SIMPLE-METHOD-COMBINATION METHOD-COMBINATION)
-(DEFPROP :OR SIMPLE-METHOD-COMBINATION METHOD-COMBINATION)
-(DEFPROP :MAX SIMPLE-METHOD-COMBINATION METHOD-COMBINATION)
-(DEFPROP :MIN SIMPLE-METHOD-COMBINATION METHOD-COMBINATION)
-(DEFPROP :+ SIMPLE-METHOD-COMBINATION METHOD-COMBINATION)
-(DEFPROP :APPEND SIMPLE-METHOD-COMBINATION METHOD-COMBINATION)
-(DEFPROP :NCONC SIMPLE-METHOD-COMBINATION METHOD-COMBINATION)
+(defprop :progn simple-method-combination method-combination)
+(defprop :and simple-method-combination method-combination)
+(defprop :or simple-method-combination method-combination)
+(defprop :max simple-method-combination method-combination)
+(defprop :min simple-method-combination method-combination)
+(defprop :+ simple-method-combination method-combination)
+(defprop :append simple-method-combination method-combination)
+(defprop :nconc simple-method-combination method-combination)
 
-; The following "tasteless" crock is necessary to make all work in Franz:
-(eval-when (load eval) (loop for (to . from) in
-			     '((:progn . progn)
-			       (:and . and)
-			       (:or . or)
-			       (:max . max)
-			       (:min . min)
-			       (:+ . +)
-			       (:append . append)
-			       (:nconc . nconc))
-			      do
-			      (putd to (getd from))))
+;; The following "tasteless" crock is necessary to make all work in
+;; Franz:
+;;
+;; Todo ed -- Not clear what this is supposed to maybe we can just
+;; ignore?
+;;
+;; (eval-when (:load-toplevel :execute)
+;;   (loop for (to . from) in
+;;        '((:progn . progn)
+;; 	 (:and . and)
+;; 	 (:or . or)
+;; 	 (:max . max)
+;; 	 (:min . min)
+;; 	 (:+ . +)
+;; 	 (:append . append)
+;; 	 (:nconc . nconc))
+;;      do
 
-(DEFUN SIMPLE-METHOD-COMBINATION (FL MAGIC-LIST-ENTRY)
-  (LET ((METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY NIL NIL NIL NIL))
-	(WRAPPERS-P (SPECIALLY-COMBINED-METHODS-PRESENT MAGIC-LIST-ENTRY)))
-    (OR (AND (NOT WRAPPERS-P) (NULL (CDR METHODS)) (CAR METHODS))
-	(HAVE-COMBINED-METHOD FL MAGIC-LIST-ENTRY)
-	(MAKE-COMBINED-METHOD FL MAGIC-LIST-ENTRY
-	   (CONS (CADR MAGIC-LIST-ENTRY)
-		 (MAPCAR 'METHOD-CALL
-			 METHODS))))))
+;;        (putd to (getd from))))
 
-; :PASS-ON combination
-; The values from the individual methods are the arguments to the next one;
-; the values from the last method are the values returned by the combined
-; method.  Format is
-;    (:METHOD-COMBINATION (:PASS-ON (ORDERING . ARGLIST)) . OPERATION-NAMES)
-; ORDERING is :BASE-FLAVOR-FIRST or :BASE-FLAVOR-LAST.  ARGLIST can have
-; &AUX and &OPTIONAL.
+(defun simple-method-combination (fl magic-list-entry)
+  (let ((methods (get-certain-methods magic-list-entry nil nil nil nil))
+	(wrappers-p (specially-combined-methods-present magic-list-entry)))
+    (or (and (not wrappers-p) (null (cdr methods)) (car methods))
+	(have-combined-method fl magic-list-entry)
+	(make-combined-method fl magic-list-entry
+	   (cons (cadr magic-list-entry)
+		 (mapcar 'method-call
+			 methods))))))
 
-(DEFUN (:PASS-ON METHOD-COMBINATION) (FL MAGIC-LIST-ENTRY)
-  (LET ((METHODS (GET-CERTAIN-METHODS MAGIC-LIST-ENTRY NIL NIL NIL
-				      (CAADDR MAGIC-LIST-ENTRY)))
-	(ARGLIST (CDADDR MAGIC-LIST-ENTRY))
-	ARGS REST-ARG-P)
-    (DO ((L ARGLIST (CDR L))
-	 (ARG)
-	 (NL NIL))
-	((NULL L)
-	 (SETQ ARGS (NREVERSE NL)))
-      (SETQ ARG (CAR L))
-      (AND (LISTP ARG)
-	   (SETQ ARG (CAR ARG)))
-      (COND ((EQ ARG '&REST)
-	     (SETQ REST-ARG-P T))
-	    ((EQ ARG '&AUX))
-	    (T
-	     (PUSH ARG NL))))
-    (OR (HAVE-COMBINED-METHOD FL MAGIC-LIST-ENTRY)
-	(MAKE-COMBINED-METHOD FL MAGIC-LIST-ENTRY
-	  `(DESTRUCTURING-BIND ,(CONS '.OPERATION. ARGLIST) SI:.DAEMON-CALLER-ARGS.
-	     . ,(DO ((METHS METHODS (CDR METHS))
-		     (LIST NIL)
-		     (METH))
-		    ((NULL METHS)
-		     (NREVERSE LIST))
-		  (SETQ METH `(,(IF REST-ARG-P
-				    'LEXPR-FUNCALL
-				  'FUNCALL)
-			       #',(CAR METHS) .OPERATION. . ,ARGS))
-		  (AND (CDR METHS)
-		       (SETQ METH (IF (NULL (CDR ARGS))
-				      `(SETQ ,(CAR ARGS) ,METH)
-				    `(MULTIPLE-VALUE ,ARGS ,METH))))
-		  (PUSH METH LIST)))))))
-
-; This function does most of the analysis of the magic-list-entry needed by
-; method-combination functions, including most error checking.
-; Returns a list of the method symbols for METHOD-TYPE extracted from
-; MAGIC-LIST-ENTRY.  This value is shared with the data structure, don't
-; bash it.  OTHER-METHODS-ALLOWED is a list of method types not to complain
-;about (T = allow all).
-;   NO-METHODS-OK = NIL means to complain if the returned value would be NIL.
-;   ORDERING-DECLARATION is :BASE-FLAVOR-FIRST, :BASE-FLAVOR-LAST, or NIL
-;    meaning take one of those symbols from the MAGIC-LIST-ENTRY."
 
+;; The values from the individual methods are the arguments to the next one;
+;; the values from the last method are the values returned by the combined
+;; method.  Format is
+;;    (:METHOD-COMBINATION (:PASS-ON (ORDERING . ARGLIST)) . OPERATION-NAMES)
+;; ORDERING is :BASE-FLAVOR-FIRST or :BASE-FLAVOR-LAST.  ARGLIST can have
+;; &AUX and &OPTIONAL.
+(defun pass-on (fl magic-list-entry)
+  (let ((methods (get-certain-methods magic-list-entry nil nil nil
+				      (caaddr magic-list-entry)))
+	(arglist (cdaddr magic-list-entry))
+	args rest-arg-p)
+    (do ((l arglist (cdr l))
+	 (arg)
+	 (nl nil))
+	((null l)
+	 (setq args (nreverse nl)))
+      (setq arg (car l))
+      (and (listp arg)
+	   (setq arg (car arg)))
+      (cond ((eq arg '&rest)
+	     (setq rest-arg-p t))
+	    ((eq arg '&aux))
+	    (t
+	     (push arg nl))))
+    (or (have-combined-method fl magic-list-entry)
+	(make-combined-method fl magic-list-entry
+	  `(destructuring-bind ,(cons '.operation. arglist) .daemon-caller-args.
+	     . ,(do ((meths methods (cdr meths))
+		     (list nil)
+		     (meth))
+		    ((null meths)
+		     (nreverse list))
+		  (setq meth `(,(if rest-arg-p
+				    'lexpr-funcall
+				  'funcall)
+			       #',(car meths) .operation. . ,args))
+		  (and (cdr meths)
+		       (setq meth (if (null (cdr args))
+				      `(setq ,(car args) ,meth)
+				    `(multiple-value ,args ,meth))))
+		  (push meth list)))))))
+
+;; For discussion see the function: daemon
+(setf (get :pass-on 'method-combination) #'pass-on)
+
+;; This function does most of the analysis of the magic-list-entry
+;; needed by method-combination functions, including most error
+;; checking.  Returns a list of the method symbols for METHOD-TYPE
+;; extracted from MAGIC-LIST-ENTRY.  This value is shared with the
+;; data structure, don't bash it.  OTHER-METHODS-ALLOWED is a list of
+;; method types not to complain about (T = allow all).
+;;   no-methods-ok = nil means to complain if the returned value would be nil.
+;;   ordering-declaration is :base-flavor-first, :base-flavor-last, or nil
+;;    meaning take one of those symbols from the magic-list-entry."
 (DEFUN GET-CERTAIN-METHODS (MAGIC-LIST-ENTRY METHOD-TYPE OTHER-METHODS-ALLOWED
 			    NO-METHODS-OK ORDERING-DECLARATION
 			    &AUX (METHODS NIL))
@@ -1812,7 +1853,7 @@ The rest of the message was ~S~%" MESSAGE ARGS))
 	  ((OR (EQ OTHER-METHODS-ALLOWED T) (MEMQ (CAR X) OTHER-METHODS-ALLOWED)) )
 	  (T (FERROR () "~S ~S method(s) illegal when using :~A method-combination"
 		         (CAR X) (CAR MAGIC-LIST-ENTRY)
-			 (OR (CADR MAGIC-LIST-ENTRY) ':DAEMON)))))
+			 (OR (CADR MAGIC-LIST-ENTRY) :DAEMON)))))
   ;; Complain if no methods supplied
   (AND (NULL METHODS) (NOT NO-METHODS-OK)
        (FERROR () "No ~S ~S method(s) supplied to :~A method-combination"
@@ -1854,7 +1895,7 @@ The rest of the message was ~S~%" MESSAGE ARGS))
 	  (AND (OR (NEQ FLAVOR1 FL) *USE-OLD-COMBINED-METHODS*)
 	       ;; ^ Combined methods of this flavor can be used only if permitted.
 	       (SETQ MTE (ASSQ OPERATION-NAME (FLAVOR-METHOD-TABLE FLAVOR1)))
-	       (SETQ OMETH (METH-LOOKUP ':COMBINED (CDDDR MTE)))
+	       (SETQ OMETH (METH-LOOKUP :COMBINED (CDDDR MTE)))
 	       (METH-DEFINEDP OMETH)
 	       (METH-DEFINITION OMETH)
 	       (SETQ CMS (METH-FUNCTION-SPEC OMETH))
@@ -1915,17 +1956,20 @@ The rest of the message was ~S~%" MESSAGE ARGS))
 			    'COMBINED-METHOD-DERIVATION))
   FSPEC)
 
+;; (LOCAL-DECLARE ((SPECIAL *FL*))
+(defvar *fl*)
 
-(LOCAL-DECLARE ((SPECIAL *FL*))
-(DEFUN GET-SPECIALLY-COMBINED-METHODS (MLE *FL*)
-  (SORT (LOOP FOR (TYPE . FSPECS) IN (CDDDR MLE)
-	      WHEN (ASSQ TYPE *SPECIALLY-COMBINED-METHOD-TYPES*)
-	        APPEND FSPECS)
-	#'(LAMBDA (FS1 FS2)
-	    (LOOP WITH FL1 = (CADR FS1) AND FL2 = (CADR FS2)
-		  FOR SUP IN (FLAVOR-DEPENDS-ON-ALL *FL*)
-		  WHEN (EQ SUP FL2) RETURN T	;Base flavor earlier in list
-		  WHEN (EQ SUP FL1) RETURN NIL)))))
+(defun get-specially-combined-methods (mle *fl*)
+  (let ((*fl* fl))
+    (sort (loop for (type . fspecs) in (cdddr mle)
+	     when (assq type *specially-combined-method-types*)
+	     append fspecs)
+	  #'(lambda (fs1 fs2)
+	      (loop with fl1 = (cadr fs1) and fl2 = (cadr fs2)
+		 for sup in (flavor-depends-on-all *fl*)
+		 ;; Base flavor earlier in list
+		 when (eq sup fl2) return t
+		 when (eq sup fl1) return nil)))))
 
 (DEFUN PUT-WRAPPER-INTO-COMBINED-METHOD (WRAPPER-NAME FORM)
   (LET ((DEF (COND #-Franz ((DECLARED-DEFINITION WRAPPER-NAME))
@@ -1969,7 +2013,7 @@ The rest of the message was ~S~%" MESSAGE ARGS))
 ;	 (GET-FLAVOR-HANDLER-FOR (FLAVOR-NAME (VREF FUNCTION 6))
 ;				 OPERATION)
 	 (GET-FLAVOR-HANDLER-FOR
-	  (FLAVOR-NAME (INT:FCLOSURE-STACK-STUFF (VREF FUNCTION 2)))
+	  (FLAVOR-NAME (INT-FCLOSURE-STACK-STUFF (VREF FUNCTION 2)))
 				 OPERATION)
 ; SMH@EMS ^^^
 )))
@@ -1987,7 +2031,8 @@ The rest of the message was ~S~%" MESSAGE ARGS))
   (CHECK-ARG INSTANCE INSTANCEP "an instance")
   (SYMEVAL-IN-FCLOSURE INSTANCE VAR))
 
-(DEFSETF SYMEVAL-IN-INSTANCE (E V) `(SET-IN-INSTANCE ,(CADR E) ,(CADDR E) ,V))
+(defun (setf symeval-in-instance) (value expression)
+    `(set-in-instance ,(cadr expression) ,(caddr eexpression) ,value))
 
 (DEFUN SET-IN-INSTANCE (INSTANCE VAR VAL)
   (CHECK-ARG INSTANCE INSTANCEP "an instance")
@@ -2003,7 +2048,7 @@ The rest of the message was ~S~%" MESSAGE ARGS))
 ;component flavors are defined.
 (DEFMACRO COMPILE-FLAVOR-METHODS (&REST FLAVOR-NAMES)
   `(PROGN 'COMPILE
-     (EVAL-WHEN (COMPILE)
+     (eval-when (:compile-toplevel)
        . ,(MAPCAN #'(LAMBDA (FLAVOR-NAME)
 		      (NCONC (AND (GET FLAVOR-NAME 'FLAVOR)
 				  (NCONS `(PUTPROP (FLAVOR-PLIST
@@ -2012,7 +2057,7 @@ The rest of the message was ~S~%" MESSAGE ARGS))
 						   'COMPILE-FLAVOR-METHODS)))
 			     (NCONS `(COMPILE-FLAVOR-METHODS-1 ',FLAVOR-NAME))))
 		  FLAVOR-NAMES))
-     (EVAL-WHEN (LOAD EVAL)
+     (eval-when (:load-toplevel :execute)
        . ,(MAPCAR #'(LAMBDA (FLAVOR-NAME) `(COMPILE-FLAVOR-METHODS-2 ',FLAVOR-NAME))
 		  FLAVOR-NAMES))))
 
@@ -2058,7 +2103,8 @@ The rest of the message was ~S~%" MESSAGE ARGS))
 		   NIL)
 	(T NIL)))
 
-(EVAL-WHEN (EVAL LOAD) (LOAD 'VANILLA))
+(eval-when (:execute :load-toplevel)
+  (load 'vanilla))
 
 ;; Local Modes:
 ;; Mode: Lisp
